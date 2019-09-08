@@ -378,7 +378,7 @@ def main() :
                     with open( os.path.join(folder_name, featureImportanceFileName), "w") as fp :
                         fp.write("feature,importance\n")
                         for featureImportance, featureIndex in featuresByImportance :
-                            fp.write( variablesX[int(featureIndex)] + "," + str(featureImportance) + "\n")
+                            fp.write( "\"" + variablesX[int(featureIndex)] + "\"," + str(featureImportance) + "\n")
 					
                     # also create and plot confusion matrix for test
                     confusionMatrixFileName = classifierName + "-confusion-matrix-split-" + str(splitIndex) + "-" + dataPreprocessing + ".png"
