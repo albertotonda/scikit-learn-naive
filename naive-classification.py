@@ -278,7 +278,9 @@ def main() :
 
     # get data
     logging.info("Loading data...")
-    X, y, variablesX, variablesY = common.loadRallouData() # TODO replace here to load different data
+    #X, y, variablesX, variablesY = common.loadRallouData() # TODO replace here to load different data
+    #X, y, variablesX, variablesY = common.loadCoronaData()
+    X, y, variablesX, variablesY = common.loadXORData()
     variableY = variablesY[0]
 
     logging.info("Shape of X: " + str(X.shape))

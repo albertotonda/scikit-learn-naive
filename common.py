@@ -27,22 +27,125 @@ def initialize_logging(folderName=None) :
 
     return
 
-def loadRallouData() :
-	
-    dataset_file = "../clustering-rallou/data/2019-08-22-Questionnaire_clean.csv"
+
+def loadChristianQuestionnaireRegression() :
+    data_file = "../questionnaire-rallou-christian/processed_data/FUSED_DATA_Phase3.xlsx"
+    df = read_excel(data_file)
+    
+    irrelevant_columns = ["StartDate", "EndDate", "Progress", "Duration__in_seconds_",
+                      "Finished", "RecordedDate", "UserLanguage", "Q1.2"]
+    irrelevant_columns.append("age")
+    irrelevant_columns.append("Q2.9")
+    df = df[[x for x in list(df) if x not in irrelevant_columns]]
+    
+    # remove all questions that mention 'TEXT' (meaning, people can write something in free form)
+    df = df[[x for x in list(df) if 'TEXT' not in x]]
+    print("After removing irrelevant and 'TEXT' columns, %d columns are left." % df.shape[1])
+    all_columns = list(df)
+    
+    # we have a list of questions with multiple possible answers
+    # that can be checked (all, none, some); empty values can be replaced with '0'
+    # but ONLY for those specific questions, elsewhere it's just "answer not given"
+    multiple_choice_questions = ["Q2.7", "Q2.8", "Q3.3", "Q4.1", "Q4.4", "Q4.8", "Q4.13"]
+    print("Replacing empty answers with '0' in columns: %s" % multiple_choice_questions)
+    
+    # now, all other missing values will be replaced with -1
+    print("Replacing all other missing values with '-1'")
+    df.replace(to_replace=' ', value='-1', inplace=True)
+    df.replace(to_replace=np.nan, value='-1', inplace=True)
+    
+    # let's count all rows where there is at least a ' ' left; but it's a little bit more
+    # complicated, as question 2.8 can be empty if people replied '1' to question 2.7
+    rows_not_answer = 0
+    for index, row in df.iterrows() :
+        #if ' ' in row[[x for x in all_columns if not x.startswith("Q2.8")]].values : rows_not_answer += 1
+        if ' ' in row.values or np.nan in row.values : rows_not_answer += 1
+        #for c in all_columns :
+        #    if row[c] == ' ' : print("Sample #%d, found missing answer for question \"%s\"" % (index, c))
+
+    # for all columns that start with that question, replace all ' ' with '0'
+    replacement_dictionary = dict()
+    for mcq in multiple_choice_questions :
+        questions = [x for x in list(df) if x.startswith(mcq)]
+        for q in questions :
+            replacement_dictionary[q] = ' '
+    df.replace(to_replace=replacement_dictionary, value='0', inplace=True)
+    
+    features = list(df)
+    variablesX = [f for f in features if not f.startswith("Q26")]
+    variableY = "Q26.1_1"
+    X = df[variablesX].values
+    y = df[variableY].values
+    y_ = y.reshape( y.shape[0], 1 ) 
+    
+    return X, y_, variablesX, [variableY]
+    
+
+def loadXORData() :
+
+    data_file = "../xor-experiments/dataset-xor-classification-42.csv"
+    df = read_csv(data_file)
+
+    variableY = "class"
+    variablesX = [ x for x in list(df) if x != variableY ]
+
+    X = df[variablesX].values
+    y = df[variableY].values.reshape(-1)
+
+    return X, y, variablesX, [variableY]
+
+def loadCoronaData() :
+
+    data_file = "../alejandro-corona-cnn/data/data.csv"
+    labels_file = "../alejandro-corona-cnn/data/labels.csv"
+
+    df_data = read_csv(data_file)
+    df_labels = read_csv(labels_file)
+
+    variableY = "class"
+    variablesX = [ "feature-%d" % i for i in range(0, len(list(df_data))) ]
+
+    X = df_data.values
+    y = df_labels.values.reshape(-1)
+
+    logging.info("Read data of size %d x %d" % (X.shape[0], X.shape[1]))
+    logging.info("Read labels of size %d" % y.shape[0])
+
+    return X, y, variablesX, [variableY]
+
+def loadAndreaMaioranoData() :
+    dataset_file = "../agriculture-forecasting-ec-jrc/data/20191119-ML.EU.Wheat.raw.csv"
     logging.info("Reading dataset \"%s\"..." % dataset_file)
     df = read_csv(dataset_file)
 
-    feature_date = "Horodateur"
-    numerical_questions = ["Q2", "Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11", "Q12", "Q13", "Q14", "Q16", "Q17", "Q18", "Q19", "Q20", "Q25", "Q28", "Q31", "Q32"]
+    logging.info("The dataset has %d samples and %f features" % (df.shape[0], df.shape[1]))
+    
+    sys.exit(0)
+
+    return X, y_, variablesX, [variableY_1, variableY_2]
+
+
+def loadRallouData() :
 	
-    variablesX = [ f for f in list(df) if f.split(" ")[0] in numerical_questions and f.split(" ")[0] != "Q2" and f.split(" ")[0] != "Q20" ]
+    dataset_file = "../clustering-rallou/data/2020-03-04_Questionnaire_clean_reformattage.csv"
+    logging.info("Reading dataset \"%s\"..." % dataset_file)
+    df = read_csv(dataset_file, sep=";")
+
+    feature_date = "Horodateur"
+    feature_id = "ID"
+    irrelevant_questions = ["Q2 ", "Q20", "Q28", "Q29", "Q30", "Q31", "Q32", "Q33"]
+
+    variablesX = [f for f in list(df) if f[0:3] not in irrelevant_questions and f != feature_date and f != feature_id]
+    print("The following questions will be considered as features for classification:", variablesX)
+    features_not_considered = [f for f in list(df) if f[0:3] in irrelevant_questions]
+    print("The following questions will be ignored:", features_not_considered)
+	
     X = df[variablesX].values
 
     variableY = "Class"
     y = np.zeros(X.shape[0])
     for index, row in df.iterrows() :
-        if row["Q2 - Quel est votre rÃ©gime alimentaire actuel"] != row["Q20 - Dans l'idÃ©al, quel rÃ©gime alimentaire dÃ©sireriez-vous avoir Ã  l'avenir ?"] :
+        if row[features_not_considered[0]] != row[features_not_considered[1]] :
             y[index] = 1
     y_ = y.reshape( y.shape[0], 1 ) 
     y_ = y_.astype('int64')
