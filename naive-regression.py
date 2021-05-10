@@ -34,8 +34,8 @@ from sklearn.ensemble import ExtraTreesRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.ensemble import RandomForestRegressor
 
-# these methods do not have the .fit(X,y) method
-from sklearn.gaussian_process import regression_models
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import DotProduct, WhiteKernel
 
 from sklearn.isotonic import IsotonicRegression
 
@@ -238,6 +238,9 @@ def main() :
             
             # generalized additive models
             [LinearGAM(n_splines=20), "LinearGAM(n_splines=20)"],
+
+            # gaussian processes
+            [GaussianProcessRegressor(kernel=DotProduct() + WhiteKernel()), "GaussianProcessRegressor"],
             
             ]
 
@@ -245,6 +248,10 @@ def main() :
     numberOfSplits = 10 # TODO change number of splits from command line
     
     if True :
+        # this is just a dumb benchmark
+        X, y, variablesX, variablesY = common.loadEasyBenchmark()
+
+    if False :
         X, y, variablesX, variablesY = common.loadChristianQuestionnaireRegression()
         
     if False :

@@ -27,6 +27,19 @@ def initialize_logging(folderName=None) :
 
     return
 
+def loadEasyBenchmark() :
+    """Easy benchmark, it's just a dumb function."""
+    X = np.arange(0, 4, 0.01)
+    y = np.array([ np.sin(2*x)**2 - np.sin(x-1) for x in X ])
+    
+    X_ = X.reshape((X.shape[0], 1))
+    y_ = y.reshape((y.shape[0], 1))
+
+    variablesX = ["x"]
+    variablesY = ["y"]
+
+    return X_, y_, variablesX, variablesY
+
 
 def loadChristianQuestionnaireRegression() :
     data_file = "../questionnaire-rallou-christian/processed_data/FUSED_DATA_Phase3.xlsx"
