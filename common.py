@@ -8,6 +8,8 @@ from logging.handlers import RotatingFileHandler
 from pandas import read_csv 	# excellent package to manipulate CSV files
 from pandas import read_excel 	# the same, but for Excel
 
+
+
 def initialize_logging(folderName=None) :
     logger = logging.getLogger('')
     logger.setLevel(logging.DEBUG)
@@ -26,6 +28,66 @@ def initialize_logging(folderName=None) :
     logger.addHandler(ch)
 
     return
+
+def loadMl4MicrobiomeCRC() :
+    """Dataset CRC from the ml4microbiome WG3"""
+
+    file_data = "../ml4microbiome-crc/data/preprocessed-df.csv"
+    print("Loading file \"%s\"..." % file_data)
+    df = read_csv(file_data)
+
+    # select all columns that start with "msp"
+    variablesX = [c for c in df.columns if c.startswith("msp")]
+    variablesX.append("country")
+    variablesY = ["health_status"]
+
+    X = df[variablesX].values
+    y = df[variablesY].values
+    
+    return X, y, variablesX, variablesY
+
+def loadMl4Microbiome() :
+    """Dataset 'id10' from the ml4microbiome WG3"""
+
+    # hard-coded files
+    folder = "../ml4microbiome"
+    file_metadata = os.path.join(folder, "HGMA.web.metadata.csv")
+    file_data = os.path.join(folder, "HGMA.web.MSP.abundance.matrix.csv")
+    dataset_id = "id10"
+
+    # load data as pandas dataframes
+    print("Loading file \"%s\"..." % file_metadata)
+    df_metadata = read_csv(file_metadata)
+    print("Loading file \"%s\"..." % file_data)
+    df_data = read_csv(file_data)
+
+    # prepare X (data), y (labels) arrays for classification
+    df_dataset = df_metadata[ df_metadata["dataset.ID"] == dataset_id ]
+    # get the list of patient samples identifiers
+    sample_ids = df_dataset["sample.ID"].values
+    # take note of the names of the rows, that will be later the names of the columns of the transposed matrix
+    column_names = df_data.iloc[:,0].values
+    # now, each sample is a column in df_data, so we need to first select the columns and then turn (transpose) the matrix to have them as rows
+    df_data_dataset = df_data[sample_ids].transpose()
+    df_data_dataset.columns = column_names
+
+    print(df_data_dataset)
+
+    # feature values are just the data selected so far
+    X = df_data_dataset.values
+    # labels are 'Case'/'Control' taken from the corresponding metadata column
+    y = df_dataset["type"].values
+
+    print("Features:", X)
+    print("Labels:", y)
+
+    # for stupid reasons, my old script needs integer labels...
+    labels_to_integers = {"Case": 1, "Control": 0}
+    y_ = np.zeros(y.shape)
+    for i in range(0, y_.shape[0]) :
+        y_[i] = labels_to_integers[y[i]]
+
+    return X, y_, column_names, ["Label"]
 
 def loadEasyBenchmark() :
     """Easy benchmark, it's just a dumb function."""

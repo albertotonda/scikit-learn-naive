@@ -12,6 +12,7 @@ import sys
 import common
 from keraswrappers import ANNRegressor
 from polynomialmodels import PolynomialRegressor
+from humanmodels import HumanRegressor
 
 # scikit-learn stuff
 from sklearn.metrics import r2_score
@@ -185,6 +186,9 @@ def main() :
     
     regressorsList = [
             
+            # human-designed regressors
+            [HumanRegressor("y = a_0 + a_1 * x + a_2 * x**2 + a_3 * x**3", map_variables_to_features={"x": 0}), "HumanRegressor"],
+
             [PolynomialRegressor(2), "PolynomialRegressor2"],
             #[PolynomialRegressor(3), "PolynomialRegressor3"],
             # keras neural network
@@ -501,7 +505,8 @@ def main() :
                 fp.write("\t\t- MAE:" + str([ "%.4f" % x for x in regressorScore["mae"] ]) + "\n") 
                 
                 # also, plot a "global" graph
-                # issue here, if a regressor fails, you haveincongruent matrixes: a check is in order
+                # issue here, if a regressor fails, you have incongruent matrixes: a check is in order
+                # TODO also, the plot looks really bad if some values are negative; turn everything to absolute values?
                 if len(foldPointsInOrder) == len( regressorScore["predicted"] ) :
                     fig = plt.figure()
                     ax = fig.add_subplot(111)

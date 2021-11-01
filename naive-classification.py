@@ -7,6 +7,7 @@ import itertools
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import os
 import re as regex
 import sys
@@ -105,8 +106,8 @@ classifier_list = [
     DecisionTreeClassifier(),
     ExtraTreeClassifier(),
 
-    # polynomial
-    PolynomialLogisticRegression(max_degree=2),
+    # polynomial NOTE for large datasets (e.g. lots of features) this will explode
+    #PolynomialLogisticRegression(max_degree=2),
 
     # neural networks NOTE they take a long time to train, parameters have to be tweaked
     #ANNClassifier(layers=[8,4])
@@ -280,7 +281,9 @@ def main() :
     logging.info("Loading data...")
     #X, y, variablesX, variablesY = common.loadRallouData() # TODO replace here to load different data
     #X, y, variablesX, variablesY = common.loadCoronaData()
-    X, y, variablesX, variablesY = common.loadXORData()
+    #X, y, variablesX, variablesY = common.loadXORData()
+    #X, y, variablesX, variablesY = common.loadMl4Microbiome()
+    X, y, variablesX, variablesY = common.loadMl4MicrobiomeCRC()
     variableY = variablesY[0]
 
     logging.info("Shape of X: " + str(X.shape))
@@ -302,8 +305,8 @@ def main() :
     logging.info("As a comparison, randomly picking labels 100 times returns an average accuracy of %.4f (+/- %.4f)\n" % (np.mean(random_scores), np.std(random_scores)))
 
     # check: do the variables' names exist? if not, put some placeholders
-    if variableY == None : variableY = "Y"
-    if variablesX == None : variablesX = [ "X" + str(i) for i in range(0, X.shape[1]) ]
+    if variableY is None : variableY = "Y"
+    if variablesX is None : variablesX = [ "X" + str(i) for i in range(0, X.shape[1]) ]
 	
     # this is a utility dictionary, that will be used to create a more concise summary
     performances = dict()
@@ -401,6 +404,12 @@ def main() :
                 confusionMatrixFileName = classifierName + "-confusion-matrix-" + dataPreprocessing + ".png"
                 confusionMatrix = confusion_matrix(all_y_test, all_y_pred)
                 plot_confusion_matrix(confusionMatrix, classes, os.path.join(folder_name, confusionMatrixFileName)) 
+
+                # but also save all test predictions, so that other metrics could be computed on top of them
+                df = pd.DataFrame()
+                df["y_true"] = all_y_test
+                df["y_pred"] = all_y_pred
+                df.to_csv(os.path.join(folder_name, classifierName + "-test-predictions-" + dataPreprocessing + ".csv"), index=False)
 
     # now, here we can write a final report
     # first, convert performance dictionary to list
