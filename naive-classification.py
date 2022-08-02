@@ -1,5 +1,5 @@
 # Simple script to test the best classifier for the problem
-# by Alberto Tonda, 2016-2019 <alberto.tonda@gmail.com>
+# by Alberto Tonda, 2016-2022 <alberto.tonda@gmail.com>
 
 import copy
 import datetime
@@ -16,6 +16,9 @@ import sys
 import warnings
 warnings.filterwarnings("ignore")
 
+# this is to get the parameters in a function
+from inspect import signature, Parameter
+
 # local libraries
 import common
 from polynomialmodels import PolynomialLogisticRegression 
@@ -24,8 +27,8 @@ from keraswrappers import ANNClassifier
 # here are some utility functions, for cross-validation, scaling, evaluation, et similia
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, auc, confusion_matrix, f1_score, roc_curve, RocCurveDisplay 
+from sklearn.utils import all_estimators
 
 # here are all the classifiers
 from sklearn.ensemble import AdaBoostClassifier
@@ -266,13 +269,50 @@ def main() :
     # hard-coded values here
     n_splits = 10
     final_report_file_name = "00_final_report.txt"
-    
+
     # create uniquely named folder
     folder_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M") + "-classification" 
     if not os.path.exists(folder_name) : os.makedirs(folder_name)
     
     # start logging
     common.initialize_logging(folder_name)
+
+    # generate a random seed that will be used for all the experiments
+    random_seed = int(datetime.datetime.now().timestamp())
+    logging.info("Random seed that will be used for all experiments: %d" % random_seed)
+
+    # generate the list of classifiers
+    classifier_list = []
+    estimators = all_estimators(type_filter="classifier")
+    for name, class_ in estimators :
+        # try to infer if classifiers accept special parameters (e.g. 'random_seed') and add them as keyword arguments
+        # we try to instantiate the classifier
+        try :
+            # first, get all the parameters in the initialization function
+            sig = signature(class_.__init__)
+            params = sig.parameters # these are not regular parameters, yet
+
+            # we need to convert them to a dictionary
+            params_dict = {}
+            for p_name, param in params.items() :
+                if params[p_name].default != Parameter.empty :
+                    params_dict[p_name] = params[p_name].default
+
+            # if the classifier requires a random seed, set it
+            if 'random_seed' in params :
+                params_dict['random_seed'] = random_seed
+
+            classifier_list.append( class_(**params_dict) )
+
+            # if it accepts a parameter called 'n_estimators', let's create a second instance and go overboard 
+            if 'n_estimators' in params :
+                params_dict['n_estimators'] = 300
+                classifier_list.append( class_(**params_dict) )
+
+        except Exception as e :
+            logging.error("Cannot instantiate classifier \"%s\" (exception: \"%s\"), skipping..." % (name, str(e))) 
+
+    logging.info("A total of %d classifiers will be used: %s" % (len(classifier_list), str(classifier_list)))
     
     # this part can be used by some case studies, storing variable names
     variableY = variablesX = None
