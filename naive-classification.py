@@ -369,7 +369,7 @@ def main() :
     # perform stratified k-fold cross-validation, but explicitly
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True)
     folds = [ [train_index, test_index] for train_index, test_index in skf.split(X, y) ]
-	
+
     # TODO 	
     # - also call function for feature selection
     # - also keep track of time needed for each classification
@@ -392,6 +392,14 @@ def main() :
         dataPreprocessingOptions = ["raw", "normalized"]
 		
         for dataPreprocessing in dataPreprocessingOptions :
+
+            # prepare all the necessary stuff for the ROC/AUC figure (unfortunately we have to do it here)
+            # because we need a different ROC for each classifier/data pre-processing combination
+            tprs = []
+            aucs = []
+            mean_fpr = np.linspace(0, 1, 100)
+            fig_roc = plt.figure(figsize=(10,8))
+            ax_roc = fig_roc.add_subplot(111)
 
             # create list
             performances[classifierName][dataPreprocessing] = []
@@ -446,10 +454,66 @@ def main() :
                     confusionMatrix = confusion_matrix(y_test, y_test_pred)
                     plot_confusion_matrix(confusionMatrix, classes, os.path.join(folder_name, confusionMatrixFileName)) 
 
+                    # also store information for the ROC figure
+                    viz = RocCurveDisplay.from_estimator(
+                        classifier,
+                        X_test,
+                        y_test,
+                        name="ROC fold %d" % splitIndex,
+                        alpha=0.3,
+                        lw=1,
+                        ax=ax_roc,
+                    )
+
+                    interp_tpr = np.interp(mean_fpr, viz.fpr, viz.tpr)
+                    interp_tpr[0] = 0.0
+                    tprs.append(interp_tpr)
+                    aucs.append(viz.roc_auc)
+
                 except Exception as e :
                     logging.warning("\tunexpected error: ", e)
 				
                 splitIndex += 1
+
+            # this is the end of the cross-validation, so let's wrap up the ROC figure
+            # TODO check what happens when you have many different classes...
+            logging.info("Plotting ROC figure...")
+            ax_roc.plot([0, 1], [0, 1], linestyle="--", lw=2, color="r", label="Chance", alpha=0.8)
+
+            mean_tpr = np.mean(tprs, axis=0)
+            mean_tpr[-1] = 1.0
+            mean_auc = auc(mean_fpr, mean_tpr)
+            std_auc = np.std(aucs)
+            ax_roc.plot(
+                mean_fpr,
+                mean_tpr,
+                color="b",
+                label=r"Mean ROC (AUC = %0.2f $\pm$ %0.2f)" % (mean_auc, std_auc),
+                lw=2,
+                alpha=0.8,
+            )
+
+            std_tpr = np.std(tprs, axis=0)
+            tprs_upper = np.minimum(mean_tpr + std_tpr, 1)
+            tprs_lower = np.maximum(mean_tpr - std_tpr, 0)
+            ax_roc.fill_between(
+                mean_fpr,
+                tprs_lower,
+                tprs_upper,
+                color="grey",
+                alpha=0.2,
+                label=r"$\pm$ 1 std. dev.",
+            )
+
+            ax_roc.set(
+                xlim=[-0.05, 1.05],
+                ylim=[-0.05, 1.05],
+                title="ROC for a 10-fold cross-validation",
+            )
+            ax_roc.legend(loc="lower right")
+
+            fig_roc.savefig(os.path.join(folder_name, classifierName + "-" + dataPreprocessing + "-roc-curve.png"), dpi=300)
+            plt.close(fig_roc)
 	    
             # the classifier might have crashed, so we need a check here
             if len(performances[classifierName][dataPreprocessing]) > 0 :
@@ -471,7 +535,7 @@ def main() :
                 df.to_csv(os.path.join(folder_name, classifierName + "-test-predictions-" + dataPreprocessing + ".csv"), index=False)
 
     # now, here we can write a final report
-    # first, convert performance dictionary to list
+    # first, convert performance dictionary to list TODO, now the performances are dictionaries
     performances_list = []
     for classifier_name in performances :
         for data_preprocessing in performances[classifier_name] :
