@@ -27,7 +27,7 @@ from keraswrappers import ANNClassifier
 # here are some utility functions, for cross-validation, scaling, evaluation, et similia
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, auc, confusion_matrix, f1_score, roc_curve, RocCurveDisplay 
+from sklearn.metrics import accuracy_score, auc, confusion_matrix, f1_score, matthews_corrcoef, roc_auc_score, roc_curve, RocCurveDisplay 
 from sklearn.utils import all_estimators
 
 # here are all the classifiers
@@ -270,6 +270,13 @@ def main() :
     n_splits = 10
     final_report_file_name = "00_final_report.txt"
 
+    # this is a dictionary of pointers to functions, used for all classification metrics that accept
+    # (y_true, y_pred) as positional arguments
+    metrics = {}
+    metrics["accuracy"] = accuracy_score
+    metrics["F1"] = f1_score
+    metrics["MCC"] = matthews_corrcoef
+
     # create uniquely named folder
     folder_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M") + "-classification" 
     if not os.path.exists(folder_name) : os.makedirs(folder_name)
@@ -284,6 +291,8 @@ def main() :
     # generate the list of classifiers
     classifier_list = []
     estimators = all_estimators(type_filter="classifier")
+
+    # TODO before entering this loop, we could actually add extra classifiers from other sources, as long as they are scikit-learn compatible
     for name, class_ in estimators :
         # try to infer if classifiers accept special parameters (e.g. 'random_seed') and add them as keyword arguments
         # we try to instantiate the classifier
@@ -312,6 +321,9 @@ def main() :
         except Exception as e :
             logging.error("Cannot instantiate classifier \"%s\" (exception: \"%s\"), skipping..." % (name, str(e))) 
 
+    # TODO BRUTALLY REMOVE ALL CLASSIFIERS EXCEPT RANDOM FOREST, JUST TO SPEED UP TESTING (this part has to be changed)
+    classifier_list = [ c for c in classifier_list if str(c).startswith("RandomForest") ]
+
     logging.info("A total of %d classifiers will be used: %s" % (len(classifier_list), str(classifier_list)))
     
     # this part can be used by some case studies, storing variable names
@@ -338,11 +350,14 @@ def main() :
         logging.info("- Class %d has %.4f of the samples in the dataset." % (c, float(classesCount[i]) / float(y.shape[0])))
 	
     # an interesting comparison: what's the performance of a random classifier?
-    random_scores = []
+    random_scores = { metric_name : [] for metric_name, metric_function in metrics.items() }
     for i in range(0, 100) :
         y_random = np.random.randint( min(classes), high=max(classes)+1, size=y.shape[0] )
-        random_scores.append( accuracy_score(y, y_random) )
-    logging.info("As a comparison, randomly picking labels 100 times returns an average accuracy of %.4f (+/- %.4f)\n" % (np.mean(random_scores), np.std(random_scores)))
+        for metric_name, metric_function in metrics.items() :
+            random_scores[metric_name].append( metric_function(y, y_random) )
+    logging.info("As a comparison, randomly picking labels 100 times returns the following scores:")
+    for metric_name, metric_scores in random_scores.items() :
+        logging.info("- Mean %s: %.4f (+/- %.4f)" % (metric_name, np.mean(metric_scores), np.std(metric_scores)))
 
     # check: do the variables' names exist? if not, put some placeholders
     if variableY is None : variableY = "Y"
@@ -401,14 +416,15 @@ def main() :
                 try:
                     classifier.fit(X_train, y_train)
 					
-                    # instead of calling the classifier's "score" method, let's compute accuracy explicitly
+                    # instead of calling the classifier's "score" method, let's compute all metrics explicitly
                     y_train_pred = classifier.predict(X_train)
                     y_test_pred = classifier.predict(X_test)
 					
-                    trainScore = accuracy_score(y_train, y_train_pred)
-                    testScore = accuracy_score(y_test, y_test_pred)
+                    trainScore = { metric_name : metric_function(y_train, y_train_pred) for metric_name, metric_function in metrics.items() }
+                    testScore = { metric_name : metric_function(y_test, y_test_pred) for metric_name, metric_function in metrics.items() }
 
-                    logging.info("Training score: %.4f ; Test score: %.4f", trainScore, testScore)
+                    for metric_name in trainScore :
+                        logging.info("- %s: Training score: %.4f ; Test score: %.4f" % (metric_name, trainScore[metric_name], testScore[metric_name]))
 					
                     # store performance and information
                     performances[classifierName][dataPreprocessing].append( (testScore, trainScore) )
@@ -438,7 +454,10 @@ def main() :
             # the classifier might have crashed, so we need a check here
             if len(performances[classifierName][dataPreprocessing]) > 0 :
                 testPerformance = [ x[0] for x in performances[classifierName][dataPreprocessing] ]
-                logging.info("Average performance (test) of classifier %s on %s data: %.4f (+/- %.4f)" % (classifierName, dataPreprocessing, np.mean(testPerformance), np.std(testPerformance)))
+                test_performance_dict = { metric_name : [p[metric_name] for p in testPerformance] for metric_name, metric_performance in testPerformance[0].items() }
+
+                for metric_name in test_performance_dict :
+                    logging.info("Average %s (test) of classifier %s on %s data: %.4f (+/- %.4f)" % (metric_name, classifierName, dataPreprocessing, np.mean(test_performance_dict[metric_name]), np.std(test_performance_dict[metric_name])))
                             
                 # plot a last confusion matrix including information for all the splits
                 confusionMatrixFileName = classifierName + "-confusion-matrix-" + dataPreprocessing + ".png"
