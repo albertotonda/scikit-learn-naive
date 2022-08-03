@@ -6,6 +6,7 @@ import datetime
 import itertools
 import logging
 import matplotlib.pyplot as plt
+import multiprocessing # this is used just to assess number of available processors
 import numpy as np
 import pandas as pd
 import os
@@ -30,100 +31,12 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, auc, confusion_matrix, f1_score, matthews_corrcoef, roc_auc_score, roc_curve, RocCurveDisplay 
 from sklearn.utils import all_estimators
 
-# here are all the classifiers
-from sklearn.ensemble import AdaBoostClassifier
-from sklearn.ensemble import BaggingClassifier
-from sklearn.ensemble import ExtraTreesClassifier
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.ensemble import RandomForestClassifier
-
-from sklearn.linear_model import ElasticNet
-from sklearn.linear_model import ElasticNetCV
-from sklearn.linear_model import Lasso
-from sklearn.linear_model import LassoCV
-from sklearn.linear_model import LogisticRegression
-from sklearn.linear_model import LogisticRegressionCV
-from sklearn.linear_model import PassiveAggressiveClassifier
-from sklearn.linear_model import RidgeClassifier
-from sklearn.linear_model import RidgeClassifierCV
-from sklearn.linear_model import SGDClassifier
-
-from sklearn.multiclass import OneVsOneClassifier 
-from sklearn.multiclass import OneVsRestClassifier
-from sklearn.multiclass import OutputCodeClassifier
-
-from sklearn.naive_bayes import BernoulliNB
-from sklearn.naive_bayes import GaussianNB
-from sklearn.naive_bayes import MultinomialNB 
-
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.neighbors import NearestCentroid
-from sklearn.neighbors import RadiusNeighborsClassifier
-
-from sklearn.svm import SVC
-
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.tree import ExtraTreeClassifier
-
 # TODO: divide classifiers into "families" and test each family separately
 # TODO: there are some very complex classifiers, such as VotingClassifier: to be explored
 # TODO: also, GridSearchCv makes an exhaustive search over the classifer's parameters (?): to be explored
 # TODO: refactor code properly, add command-line options
 # TODO: take all classifiers that are currently not working, and try to wrap them in a class with .fit() and .predict() and .score()
 # TODO: the same, but with pyGAM (Generalized Additive Models)
-
-# NOTE: comment/uncomment classifiers from the list
-classifier_list = [
-
-    # ensemble
-    AdaBoostClassifier(),
-    BaggingClassifier(),
-    BaggingClassifier(n_estimators=300),
-    ExtraTreesClassifier(),
-    GradientBoostingClassifier(),
-    GradientBoostingClassifier(n_estimators=300),
-    RandomForestClassifier(),
-    RandomForestClassifier(n_estimators=300, class_weight='balanced'),
-
-    # linear
-    LogisticRegression(),
-    LogisticRegressionCV(),
-    PassiveAggressiveClassifier(),
-    RidgeClassifier(),
-    RidgeClassifierCV(),
-    SGDClassifier(),
-    SVC(kernel='linear'),
-    
-    # naive Bayes
-    BernoulliNB(),
-    GaussianNB(),
-    #MultinomialNB(),
-    
-    # neighbors
-    KNeighborsClassifier(),
-    # TODO this one creates issues
-    #NearestCentroid(), # it does not have some necessary methods, apparently
-    #RadiusNeighborsClassifier(),
-    
-    # tree
-    DecisionTreeClassifier(),
-    ExtraTreeClassifier(),
-
-    # polynomial NOTE for large datasets (e.g. lots of features) this will explode
-    #PolynomialLogisticRegression(max_degree=2),
-
-    # neural networks NOTE they take a long time to train, parameters have to be tweaked
-    #ANNClassifier(layers=[8,4])
-
-    ]
-
-ensemble_classifier_list = [
-
-    OneVsOneClassifier,
-    OneVsRestClassifier,
-    OutputCodeClassifier
-
-    ]
 
 # this function plots a confusion matrix
 def plot_confusion_matrix(confusionMatrix, classes, fileName, title='Confusion matrix'):
@@ -218,7 +131,7 @@ def get_relative_feature_importance(classifier) :
     # the classifier does not even have the "estimators_features_", but it's
     # some sort of linear/hyperplane classifier, so it does have a list of
     # coefficients; for the coefficients, the absolute value might be relevant
-    elif hasattr(classifier, "coef_") :
+    elif hasattr(classifier, "coef_") and isinstance(classifier.coef_, np.ndarray) :
 	
         # now, "coef_" is usually multi-dimensional, so we iterate on
         # all dimensions, and take a look at the features whose coefficients
@@ -288,6 +201,8 @@ def main() :
     # generate a random seed that will be used for all the experiments
     random_seed = int(datetime.datetime.now().timestamp())
     logging.info("Random seed that will be used for all experiments: %d" % random_seed)
+    # set the numpy random number generator with the seed
+    np.random.seed(random_seed)
 
     # generate the list of classifiers
     classifier_list = []
@@ -312,6 +227,10 @@ def main() :
             if 'random_seed' in params :
                 params_dict['random_seed'] = random_seed
 
+            # TODO if the classifier has an "n_job" parameter (number of processors to use in parallel, add it
+            if 'n_jobs' in params :
+                params_dict['n_jobs'] = max(multiprocessing.cpu_count() - 1, 1) # use maximum available minus one; if it is zero, just use one
+
             classifier_list.append( class_(**params_dict) )
 
             # if it accepts a parameter called 'n_estimators', let's create a second instance and go overboard 
@@ -322,8 +241,10 @@ def main() :
         except Exception as e :
             logging.error("Cannot instantiate classifier \"%s\" (exception: \"%s\"), skipping..." % (name, str(e))) 
 
-    # TODO BRUTALLY REMOVE ALL CLASSIFIERS EXCEPT RANDOM FOREST, JUST TO SPEED UP TESTING (this part has to be changed)
+    # TODO BRUTALLY REMOVE ALL CLASSIFIERS EXCEPT THE ONES WE NEED TO TEST, JUST TO SPEED UP TESTING (this part has to be changed)
     #classifier_list = [ c for c in classifier_list if str(c).startswith("RandomForest") ]
+    #classifier_list = [ c for c in classifier_list if str(c).startswith("CategoricalNB") ]
+    #classifier_list = [ c for c in classifier_list if str(c).startswith("LabelPropagation") ]
 
     logging.info("A total of %d classifiers will be used: %s" % (len(classifier_list), str(classifier_list)))
     
@@ -480,49 +401,56 @@ def main() :
 				
                 splitIndex += 1
 
-            # this is the end of the cross-validation, so let's wrap up the ROC figure
-            # TODO check what happens when you have many different classes...
-            logging.info("Plotting ROC figure...")
-            ax_roc.plot([0, 1], [0, 1], linestyle="--", lw=2, color="r", label="Chance", alpha=0.8)
-
-            mean_tpr = np.mean(tprs, axis=0)
-            mean_tpr[-1] = 1.0
-            mean_auc = auc(mean_fpr, mean_tpr)
-            std_auc = np.std(aucs)
-            ax_roc.plot(
-                mean_fpr,
-                mean_tpr,
-                color="b",
-                label=r"Mean ROC (AUC = %0.2f $\pm$ %0.2f)" % (mean_auc, std_auc),
-                lw=2,
-                alpha=0.8,
-            )
-
-            std_tpr = np.std(tprs, axis=0)
-            tprs_upper = np.minimum(mean_tpr + std_tpr, 1)
-            tprs_lower = np.maximum(mean_tpr - std_tpr, 0)
-            ax_roc.fill_between(
-                mean_fpr,
-                tprs_lower,
-                tprs_upper,
-                color="grey",
-                alpha=0.2,
-                label=r"$\pm$ 1 std. dev.",
-            )
-
-            ax_roc.set(
-                xlim=[-0.05, 1.05],
-                ylim=[-0.05, 1.05],
-                title="ROC for a 10-fold cross-validation",
-            )
-            ax_roc.legend(loc="lower right")
-
-            fig_roc.savefig(os.path.join(folder_name, classifierName + "-" + dataPreprocessing + "-roc-curve.png"), dpi=300)
-            plt.close(fig_roc)
-	    
+            # this is the end of the cross-validation, so let's wrap up the ROC figure (if we have enough data)
             # the classifier might have crashed, so we need a check here
-            if len(performances[classifierName][dataPreprocessing]["test"][reference_metric]) > 0 : 
+            if len(performances[classifierName][dataPreprocessing]["test"][reference_metric]) == n_splits : 
 
+                print(performances[classifierName][dataPreprocessing]["test"])
+
+                # another check: we need enough tprs and aucs to plot the ROC curve
+                if len(tprs) == n_splits and len(aucs) == n_splits :
+                    # TODO check what happens when you have many different classes...
+                    logging.info("Plotting ROC figure...")
+                    ax_roc.plot([0, 1], [0, 1], linestyle="--", lw=2, color="r", label="Chance", alpha=0.8)
+
+                    mean_tpr = np.mean(tprs, axis=0)
+                    mean_tpr[-1] = 1.0
+                    mean_auc = auc(mean_fpr, mean_tpr)
+                    std_auc = np.std(aucs)
+                    ax_roc.plot(
+                        mean_fpr,
+                        mean_tpr,
+                        color="b",
+                        label=r"Mean ROC (AUC = %0.2f $\pm$ %0.2f)" % (mean_auc, std_auc),
+                        lw=2,
+                        alpha=0.8,
+                    )
+
+                    std_tpr = np.std(tprs, axis=0)
+                    tprs_upper = np.minimum(mean_tpr + std_tpr, 1)
+                    tprs_lower = np.maximum(mean_tpr - std_tpr, 0)
+                    ax_roc.fill_between(
+                        mean_fpr,
+                        tprs_lower,
+                        tprs_upper,
+                        color="grey",
+                        alpha=0.2,
+                        label=r"$\pm$ 1 std. dev.",
+                    )
+
+                    ax_roc.set(
+                        xlim=[-0.05, 1.05],
+                        ylim=[-0.05, 1.05],
+                        title="ROC for a 10-fold cross-validation (%s, %s data)" % (classifierName, dataPreprocessing),
+                    )
+                    ax_roc.legend(loc="lower right")
+
+                    fig_roc.savefig(os.path.join(folder_name, classifierName + "-" + dataPreprocessing + "-roc-curve.png"), dpi=300)
+
+                else :
+                    logging.warning("Cannot plot ROC curve for %s, something went wrong while computing TPRs and AUCs..." % classifierName)
+
+                # and now some computation on the mean performance
                 test_performance_dict = performances[classifierName][dataPreprocessing]["test"]
 
                 for metric_name in test_performance_dict :
@@ -541,6 +469,9 @@ def main() :
                 df["y_true"] = all_y_test
                 df["y_pred"] = all_y_pred
                 df.to_csv(os.path.join(folder_name, classifierName + "-test-predictions-" + dataPreprocessing + ".csv"), index=False)
+
+            # in any case (we had enough data or not), we close the figure, to save memory
+            plt.close(fig_roc)
 
     # now, here we can write a final report; it's probably a good idea to create a Pandas dataframe, easier to sort and write to disk
     # probably the best way to go is to first create a dictionary, and then convert it to a dataframe
@@ -568,6 +499,17 @@ def main() :
                         df_dict[metric_name + " " + t + " (std)"].append( np.std(metric_performance) )
                 df_dict["AUC (mean)"].append( mean_auc )
                 df_dict["AUC (std)"].append( std_auc )
+
+    # as a baseline, it would also be interesting to add performances of a completely random classifier, and a classifier that always predicts the most
+    # numerous class
+    df_dict["classifier"].append("Random")
+    df_dict["preprocessing"].append("-")
+    for t in ["train", "test"] :
+        for metric_name, metric_performance in random_scores.items() :
+            df_dict[metric_name + " " + t + " (mean)"].append( np.mean(metric_performance) )
+            df_dict[metric_name + " " + t + " (std)"].append( np.std(metric_performance) )
+    df_dict["AUC (mean)"].append( "-" ) # computing the AUC is complicated for a random classifier...
+    df_dict["AUC (std)"].append( "-" )
 
     # now that the dictionary is ready, convert it to a DataFrame
     df = pd.DataFrame.from_dict(df_dict)
