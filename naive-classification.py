@@ -245,7 +245,19 @@ def main() :
     #classifier_list = [ c for c in classifier_list if str(c).startswith("RandomForest") ]
     #classifier_list = [ c for c in classifier_list if str(c).startswith("CategoricalNB") ]
     #classifier_list = [ c for c in classifier_list if str(c).startswith("LabelPropagation") ]
+    if False :
+        new_classifier_list = []
+        add_classifier = False
+        for i in range(0, len(classifier_list)) :
+            # we add only classifiers AFTER (and including) this one
+            if str(classifier_list[i]).startswith("LabelPropagation") : 
+                add_classifier = True
+            if add_classifier :
+                new_classifier_list.append( classifier_list[i] )
 
+        classifier_list = new_classifier_list
+    ### END OF THE PART USED FOR TESTING
+        
     logging.info("A total of %d classifiers will be used: %s" % (len(classifier_list), str(classifier_list)))
     
     # this part can be used by some case studies, storing variable names
@@ -405,8 +417,7 @@ def main() :
             # the classifier might have crashed, so we need a check here
             if len(performances[classifierName][dataPreprocessing]["test"][reference_metric]) == n_splits : 
 
-                print(performances[classifierName][dataPreprocessing]["test"])
-
+                #print(performances[classifierName][dataPreprocessing]["test"])
                 # another check: we need enough tprs and aucs to plot the ROC curve
                 if len(tprs) == n_splits and len(aucs) == n_splits :
                     # TODO check what happens when you have many different classes...
