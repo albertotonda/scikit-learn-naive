@@ -268,12 +268,13 @@ def main() :
     # TODO argparse? maybe divide into "fast", "exhaustive", "heuristic"; also add option to specify file from command line (?)
     # hard-coded values here
     n_splits = 10
-    final_report_file_name = "00_final_report.txt"
+    final_report_file_name = "00_final_report.csv"
+    reference_metric = "F1"
 
     # this is a dictionary of pointers to functions, used for all classification metrics that accept
     # (y_true, y_pred) as positional arguments
     metrics = {}
-    metrics["accuracy"] = accuracy_score
+    metrics["Accuracy"] = accuracy_score
     metrics["F1"] = f1_score
     metrics["MCC"] = matthews_corrcoef
 
@@ -322,7 +323,7 @@ def main() :
             logging.error("Cannot instantiate classifier \"%s\" (exception: \"%s\"), skipping..." % (name, str(e))) 
 
     # TODO BRUTALLY REMOVE ALL CLASSIFIERS EXCEPT RANDOM FOREST, JUST TO SPEED UP TESTING (this part has to be changed)
-    classifier_list = [ c for c in classifier_list if str(c).startswith("RandomForest") ]
+    #classifier_list = [ c for c in classifier_list if str(c).startswith("RandomForest") ]
 
     logging.info("A total of %d classifiers will be used: %s" % (len(classifier_list), str(classifier_list)))
     
@@ -401,8 +402,10 @@ def main() :
             fig_roc = plt.figure(figsize=(10,8))
             ax_roc = fig_roc.add_subplot(111)
 
-            # create list
-            performances[classifierName][dataPreprocessing] = []
+            # create dictionaries that will be used to store the performance for the different metrics
+            performances[classifierName][dataPreprocessing] = dict()
+            performances[classifierName][dataPreprocessing]["train"] = { metric_name : [] for metric_name, metric_function in metrics.items() }
+            performances[classifierName][dataPreprocessing]["test"] = { metric_name : [] for metric_name, metric_function in metrics.items() }
 			
             # this is used to produce a "global" confusion matrix for the classifier
             all_y_test = []
@@ -428,14 +431,16 @@ def main() :
                     y_train_pred = classifier.predict(X_train)
                     y_test_pred = classifier.predict(X_test)
 					
-                    trainScore = { metric_name : metric_function(y_train, y_train_pred) for metric_name, metric_function in metrics.items() }
-                    testScore = { metric_name : metric_function(y_test, y_test_pred) for metric_name, metric_function in metrics.items() }
+                    # store all results for selected metrics, in training and test
+                    for metric_name, metric_function in metrics.items() :
+                        performances[classifierName][dataPreprocessing]["train"][metric_name].append( metric_function(y_train, y_train_pred) )
+                        performances[classifierName][dataPreprocessing]["test"][metric_name].append( metric_function(y_test, y_test_pred) )
 
-                    for metric_name in trainScore :
-                        logging.info("- %s: Training score: %.4f ; Test score: %.4f" % (metric_name, trainScore[metric_name], testScore[metric_name]))
+                        logging.info("- %s: Training score: %.4f ; Test score: %.4f" % 
+                                (metric_name, performances[classifierName][dataPreprocessing]["train"][metric_name][-1],
+                                    performances[classifierName][dataPreprocessing]["test"][metric_name][-1]))
 					
-                    # store performance and information
-                    performances[classifierName][dataPreprocessing].append( (testScore, trainScore) )
+                    # store information on the predictions, that will be used later
                     all_y_test = np.append(all_y_test, y_test)
                     all_y_pred = np.append(all_y_pred, y_test_pred)
 					
@@ -516,12 +521,15 @@ def main() :
             plt.close(fig_roc)
 	    
             # the classifier might have crashed, so we need a check here
-            if len(performances[classifierName][dataPreprocessing]) > 0 :
-                testPerformance = [ x[0] for x in performances[classifierName][dataPreprocessing] ]
-                test_performance_dict = { metric_name : [p[metric_name] for p in testPerformance] for metric_name, metric_performance in testPerformance[0].items() }
+            if len(performances[classifierName][dataPreprocessing]["test"][reference_metric]) > 0 : 
+
+                test_performance_dict = performances[classifierName][dataPreprocessing]["test"]
 
                 for metric_name in test_performance_dict :
-                    logging.info("Average %s (test) of classifier %s on %s data: %.4f (+/- %.4f)" % (metric_name, classifierName, dataPreprocessing, np.mean(test_performance_dict[metric_name]), np.std(test_performance_dict[metric_name])))
+                    logging.info("- Mean %s (test) of classifier %s on %s data: %.4f (+/- %.4f)" % (metric_name, classifierName, dataPreprocessing, np.mean(test_performance_dict[metric_name]), np.std(test_performance_dict[metric_name])))
+
+                # there is a metric that is computed separately, AUC
+                logging.info("- Mean AUC of classifier %s on %s data: %.4f (+/- %.4f)" % (classifierName, dataPreprocessing, mean_auc, std_auc))
                             
                 # plot a last confusion matrix including information for all the splits
                 confusionMatrixFileName = classifierName + "-confusion-matrix-" + dataPreprocessing + ".png"
@@ -534,72 +542,93 @@ def main() :
                 df["y_pred"] = all_y_pred
                 df.to_csv(os.path.join(folder_name, classifierName + "-test-predictions-" + dataPreprocessing + ".csv"), index=False)
 
-    # now, here we can write a final report
-    # first, convert performance dictionary to list TODO, now the performances are dictionaries
+    # now, here we can write a final report; it's probably a good idea to create a Pandas dataframe, easier to sort and write to disk
+    # probably the best way to go is to first create a dictionary, and then convert it to a dataframe
+    df_dict = dict()
+    df_dict["classifier"] = []
+    df_dict["preprocessing"] = []
+    for metric_name in metrics :
+        for t in ["train", "test"] :
+            df_dict[metric_name + " " + t + " (mean)"] = []
+            df_dict[metric_name + " " + t + " (std)"] = []
+    df_dict["AUC (mean)"] = []
+    df_dict["AUC (std)"] = []
+
     performances_list = []
     for classifier_name in performances :
         for data_preprocessing in performances[classifier_name] :
             
-            if len(performances[classifier_name][data_preprocessing]) > 0 :
-                performance = [ x[0] for x in performances[classifier_name][data_preprocessing] ]
-                performance_mean = np.mean(performance)
-                performance_std = np.std(performance)
+            if len(performances[classifier_name][data_preprocessing]["test"][reference_metric]) > 0 :
 
-                performances_list.append( [classifier_name + " (" + data_preprocessing + ")", performance_mean, performance_std, performance] )
+                df_dict["classifier"].append(classifier_name)
+                df_dict["preprocessing"].append(data_preprocessing)
+                for t in performances[classifier_name][data_preprocessing] :
+                    for metric_name, metric_performance in performances[classifier_name][data_preprocessing][t].items() :
+                        df_dict[metric_name + " " + t + " (mean)"].append( np.mean(metric_performance) )
+                        df_dict[metric_name + " " + t + " (std)"].append( np.std(metric_performance) )
+                df_dict["AUC (mean)"].append( mean_auc )
+                df_dict["AUC (std)"].append( std_auc )
 
-    performances_list = sorted(performances_list, key = lambda x : x[1], reverse=True)
+    # now that the dictionary is ready, convert it to a DataFrame
+    df = pd.DataFrame.from_dict(df_dict)
+
+    # since we are using a lot of different metrics, we have to pick one that will be used for sorting. MCC or F1, I'd say; it's hard-coded at the beginning
+    df.sort_values(reference_metric + " test (mean)", ascending=False, inplace=True)
 
     final_report_file_name = os.path.join(folder_name, final_report_file_name)
     logging.info("Final results (that will also be written to file \"" + final_report_file_name + "\"...")
 
-    with open(final_report_file_name, "w") as fp :
+    df.to_csv(final_report_file_name, index=False)
 
-        fp.write("Final accuracy results for variable \"%s\", %d samples, %d classes:\n" % (variableY, len(X), len(classes))) 
-        
-        for result in performances_list :
+    if False :
+        with open(final_report_file_name, "w") as fp :
 
-            temp_string = "Classifier \"%s\", accuracy: mean=%.4f, stdev=%.4f" % (result[0], result[1], result[2])
-            logging.info(temp_string)
-            fp.write(temp_string + "\n")
+            fp.write("Final accuracy results for variable \"%s\", %d samples, %d classes:\n" % (variableY, len(X), len(classes))) 
+            
+            for result in performances_list :
 
-            temp_string = "Folds: %s" % str(result[3])
-            logging.info(temp_string)
-            fp.write(temp_string + "\n\n")
+                temp_string = "Classifier \"%s\", accuracy: mean=%.4f, stdev=%.4f" % (result[0], result[1], result[2])
+                logging.info(temp_string)
+                fp.write(temp_string + "\n")
+
+                temp_string = "Folds: %s" % str(result[3])
+                logging.info(temp_string)
+                fp.write(temp_string + "\n\n")
 
 
-    #		# this part can be skipped because it's computationally expensive; also skip if there are only two classes
-    #		if False :
-    #			# multiclass classifiers are treated differently
-    #			logging.info("Now training OneVsOneClassifier with " + classifierName + "...")
-    #			multiClassClassifier = OneVsOneClassifier( classifierData[0] ) 
-    #			multiClassClassifier.fit(trainData, trainLabels)
-    #			trainScore = multiClassClassifier.score(trainData, trainLabels)
-    #			testScore = multiClassClassifier.score(testData, testLabels)
-    #			logging.info("\ttraining score: %.4f ; test score: %.4f", trainScore, testScore)
-    #			logging.info(common.classByClassTest(multiClassClassifier, testData, testLabels))
-    #
-    #			logging.info("Now training OneVsRestClassifier with " + classifierName + "...")
-    #			currentClassifier = copy.deepcopy( classifierData[0] )
-    #			multiClassClassifier = OneVsRestClassifier( currentClassifier ) 
-    #			multiClassClassifier.fit(trainData, trainLabels)
-    #			trainScore = multiClassClassifier.score(trainData, trainLabels)
-    #			testScore = multiClassClassifier.score(testData, testLabels)
-    #			logging.info("\ttraining score: %.4f ; test score: %.4f", trainScore, testScore)
-    #			logging.info(common.classByClassTest(multiClassClassifier, testData, testLabels))
-    #
-    #			logging.info("Now training OutputCodeClassifier with " + classifierName + "...")
-    #			multiClassClassifier = OutputCodeClassifier( classifierData[0] ) 
-    #			multiClassClassifier.fit(trainData, trainLabels)
-    #			trainScore = multiClassClassifier.score(trainData, trainLabels)
-    #			testScore = multiClassClassifier.score(testData, testLabels)
-    #			logging.info("\ttraining score: %.4f ; test score: %.4f", trainScore, testScore)
-    #			logging.info(common.classByClassTest(multiClassClassifier, testData, testLabels))
-	
-	# TODO save files for each classifier:
-	#	- recall?
-	#	- accuracy?
-	#	- "special" stuff for each classifier, for example the PDF tree for DecisionTree
-	
+        #		# this part can be skipped because it's computationally expensive; also skip if there are only two classes
+        #		if False :
+        #			# multiclass classifiers are treated differently
+        #			logging.info("Now training OneVsOneClassifier with " + classifierName + "...")
+        #			multiClassClassifier = OneVsOneClassifier( classifierData[0] ) 
+        #			multiClassClassifier.fit(trainData, trainLabels)
+        #			trainScore = multiClassClassifier.score(trainData, trainLabels)
+        #			testScore = multiClassClassifier.score(testData, testLabels)
+        #			logging.info("\ttraining score: %.4f ; test score: %.4f", trainScore, testScore)
+        #			logging.info(common.classByClassTest(multiClassClassifier, testData, testLabels))
+        #
+        #			logging.info("Now training OneVsRestClassifier with " + classifierName + "...")
+        #			currentClassifier = copy.deepcopy( classifierData[0] )
+        #			multiClassClassifier = OneVsRestClassifier( currentClassifier ) 
+        #			multiClassClassifier.fit(trainData, trainLabels)
+        #			trainScore = multiClassClassifier.score(trainData, trainLabels)
+        #			testScore = multiClassClassifier.score(testData, testLabels)
+        #			logging.info("\ttraining score: %.4f ; test score: %.4f", trainScore, testScore)
+        #			logging.info(common.classByClassTest(multiClassClassifier, testData, testLabels))
+        #
+        #			logging.info("Now training OutputCodeClassifier with " + classifierName + "...")
+        #			multiClassClassifier = OutputCodeClassifier( classifierData[0] ) 
+        #			multiClassClassifier.fit(trainData, trainLabels)
+        #			trainScore = multiClassClassifier.score(trainData, trainLabels)
+        #			testScore = multiClassClassifier.score(testData, testLabels)
+        #			logging.info("\ttraining score: %.4f ; test score: %.4f", trainScore, testScore)
+        #			logging.info(common.classByClassTest(multiClassClassifier, testData, testLabels))
+            
+            # TODO save files for each classifier:
+            #	- recall?
+            #	- accuracy?
+            #	- "special" stuff for each classifier, for example the PDF tree for DecisionTree
+            
     return
 
 if __name__ == "__main__" :
