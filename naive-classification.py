@@ -265,11 +265,11 @@ def main() :
 
     # get data
     logging.info("Loading data...")
-    #X, y, variablesX, variablesY = common.loadRallouData() # TODO replace here to load different data
+    X, y, variablesX, variablesY = common.loadRallouData() # TODO replace here to load different data
     #X, y, variablesX, variablesY = common.loadCoronaData()
     #X, y, variablesX, variablesY = common.loadXORData()
     #X, y, variablesX, variablesY = common.loadMl4Microbiome()
-    X, y, variablesX, variablesY = common.loadMl4MicrobiomeCRC()
+    #X, y, variablesX, variablesY = common.loadMl4MicrobiomeCRC()
     variableY = variablesY[0]
 
     logging.info("Shape of X: " + str(X.shape))
@@ -469,6 +469,10 @@ def main() :
 
                 # there is a metric that is computed separately, AUC
                 logging.info("- Mean AUC of classifier %s on %s data: %.4f (+/- %.4f)" % (classifierName, dataPreprocessing, mean_auc, std_auc))
+
+                # also, store he information about the AUC
+                performances[classifierName][dataPreprocessing]["AUC (mean)"] = mean_auc
+                performances[classifierName][dataPreprocessing]["AUC (std)"] = std_auc
                             
                 # plot a last confusion matrix including information for all the splits
                 confusionMatrixFileName = classifierName + "-confusion-matrix-" + dataPreprocessing + ".png"
@@ -501,15 +505,22 @@ def main() :
         for data_preprocessing in performances[classifier_name] :
             
             if len(performances[classifier_name][data_preprocessing]["test"][reference_metric]) > 0 :
+                print(performances[classifier_name][data_preprocessing]) # TODO comment this, debugging
 
                 df_dict["classifier"].append(classifier_name)
                 df_dict["preprocessing"].append(data_preprocessing)
-                for t in performances[classifier_name][data_preprocessing] :
+                for t in ["train", "test"] : # performances[classifier_name][data_preprocessing] :
                     for metric_name, metric_performance in performances[classifier_name][data_preprocessing][t].items() :
                         df_dict[metric_name + " " + t + " (mean)"].append( np.mean(metric_performance) )
                         df_dict[metric_name + " " + t + " (std)"].append( np.std(metric_performance) )
-                df_dict["AUC (mean)"].append( mean_auc )
-                df_dict["AUC (std)"].append( std_auc )
+
+                # we could have had some issues computing the AUC
+                if "AUC (mean)" in performances[classifier_name][data_preprocessing] :
+                    df_dict["AUC (mean)"].append( performances[classifier_name][data_preprocessing]["AUC (mean)"] )
+                    df_dict["AUC (std)"].append( performances[classifier_name][data_preprocessing]["AUC (std)"] )
+                else :
+                    df_dict["AUC (mean)"].append("-")
+                    df_dict["AUC (std)"].append("-")
 
     # as a baseline, it would also be interesting to add performances of a completely random classifier, and a classifier that always predicts the most
     # numerous class
