@@ -227,7 +227,7 @@ def main() :
             if 'random_seed' in params :
                 params_dict['random_seed'] = random_seed
 
-            # TODO if the classifier has an "n_job" parameter (number of processors to use in parallel, add it
+            # if the classifier has an "n_job" parameter (number of processors to use in parallel, add it
             if 'n_jobs' in params :
                 params_dict['n_jobs'] = max(multiprocessing.cpu_count() - 1, 1) # use maximum available minus one; if it is zero, just use one
 
@@ -236,6 +236,12 @@ def main() :
             # if it accepts a parameter called 'n_estimators', let's create a second instance and go overboard 
             if 'n_estimators' in params :
                 params_dict['n_estimators'] = 300
+                classifier_list.append( class_(**params_dict) )
+
+            # if it's the DummyClassifier, let's add a second version that uses a purely random approach
+            # (the default is based on priors)
+            if class_.__name__ == "DummyClassifier" :
+                params_dict['strategy'] = 'uniform'
                 classifier_list.append( class_(**params_dict) )
 
         except Exception as e :
@@ -284,6 +290,7 @@ def main() :
         logging.info("- Class %d has %.4f of the samples in the dataset." % (c, float(classesCount[i]) / float(y.shape[0])))
 	
     # an interesting comparison: what's the performance of a random classifier?
+    # TODO this could be replaced by DummyClassifier
     random_scores = { metric_name : [] for metric_name, metric_function in metrics.items() }
     for i in range(0, 100) :
         y_random = np.random.randint( min(classes), high=max(classes)+1, size=y.shape[0] )
@@ -313,8 +320,13 @@ def main() :
         classifier_string = str(classifier)
 
         # now, we automatically generate the name of the classifier, using a regular expression
+        # that catches if it does have specific non-default parameters; for example, a different number of estimators
         classifierName = classifier_string.split("(")[0]
         match = regex.search("n_estimators=([0-9]+)", classifier_string)
+        if match : classifierName += "_" + match.group(1)
+
+        # or a specific type of strategy, in the case of DummyClassifier
+        match = regex.search("strategy='(\w+)'", classifier_string)
         if match : classifierName += "_" + match.group(1)
 
         logging.info("Classifier #%d/%d: %s..." % (classifierIndex+1, len(classifier_list), classifierName))
@@ -356,7 +368,7 @@ def main() :
                     X_train = scaler.fit_transform(X_train)
                     X_test = scaler.transform(X_test)
 			
-                logging.info("Training classifier %s on split #%d/%d (%s data)..." % (classifierName, splitIndex+1, n_splits, dataPreprocessing))
+                logging.info("Training classifier %s on fold #%d/%d (%s data)..." % (classifierName, splitIndex+1, n_splits, dataPreprocessing))
                 try:
                     classifier.fit(X_train, y_train)
 					
@@ -522,17 +534,6 @@ def main() :
                     df_dict["AUC (mean)"].append("-")
                     df_dict["AUC (std)"].append("-")
 
-    # as a baseline, it would also be interesting to add performances of a completely random classifier, and a classifier that always predicts the most
-    # numerous class
-    df_dict["classifier"].append("Random")
-    df_dict["preprocessing"].append("-")
-    for t in ["train", "test"] :
-        for metric_name, metric_performance in random_scores.items() :
-            df_dict[metric_name + " " + t + " (mean)"].append( np.mean(metric_performance) )
-            df_dict[metric_name + " " + t + " (std)"].append( np.std(metric_performance) )
-    df_dict["AUC (mean)"].append( "-" ) # computing the AUC is complicated for a random classifier...
-    df_dict["AUC (std)"].append( "-" )
-
     # now that the dictionary is ready, convert it to a DataFrame
     df = pd.DataFrame.from_dict(df_dict)
 
@@ -540,8 +541,7 @@ def main() :
     df.sort_values(reference_metric + " test (mean)", ascending=False, inplace=True)
 
     final_report_file_name = os.path.join(folder_name, final_report_file_name)
-    logging.info("Final results (that will also be written to file \"" + final_report_file_name + "\"...")
-
+    logging.info("Final results will be written to file \"" + final_report_file_name + "\"...")
     df.to_csv(final_report_file_name, index=False)
 
     if False :

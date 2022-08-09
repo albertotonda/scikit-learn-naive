@@ -3,10 +3,14 @@
 
 import datetime
 import logging
+import multiprocessing # this is used just to assess number of available processors
 import numpy as np
 import os
 import pickle
 import sys
+
+# this is to get the parameters in a function
+from inspect import signature, Parameter
 
 # my home-made stuff
 import common
@@ -25,6 +29,8 @@ from sklearn.model_selection import ShuffleSplit
 from sklearn.model_selection import LeaveOneOut
 
 from sklearn.preprocessing import StandardScaler
+
+from sklearn.utils import all_estimators
 
 # list of all regressors included in scikit-learn
 from sklearn.cross_decomposition import PLSRegression
@@ -183,6 +189,61 @@ def main() :
     
     # initialize logging
     common.initialize_logging(folderName)
+
+    # generate a random seed that will be used for all the experiments
+    random_seed = int(datetime.datetime.now().timestamp())
+    logging.info("Random seed that will be used for all experiments: %d" % random_seed)
+    # set the numpy random number generator with the seed
+    np.random.seed(random_seed)
+
+    # automatically create the list of regressors
+    regressor_list = []
+    estimators = all_estimators(type_filter="regressor")
+
+    for name, class_ in estimators :
+        # try to infer if classifiers accept special parameters (e.g. 'random_seed') and add them as keyword arguments
+        # we try to instantiate the classifier
+        try :
+            # first, get all the parameters in the initialization function
+            sig = signature(class_.__init__)
+            params = sig.parameters # these are not regular parameters, yet
+
+            # we need to convert them to a dictionary
+            params_dict = {}
+            for p_name, param in params.items() :
+                if params[p_name].default != Parameter.empty :
+                    params_dict[p_name] = params[p_name].default
+
+            # if the classifier requires a random seed, set it
+            if 'random_seed' in params :
+                params_dict['random_seed'] = random_seed
+
+            # if the classifier has an "n_job" parameter (number of processors to use in parallel, add it
+            if 'n_jobs' in params :
+                params_dict['n_jobs'] = max(multiprocessing.cpu_count() - 1, 1) # use maximum available minus one; if it is zero, just use one
+
+            regressor_list.append( class_(**params_dict) )
+
+            # if it accepts a parameter called 'n_estimators', let's create a second instance and go overboard 
+            if 'n_estimators' in params :
+                params_dict['n_estimators'] = 300
+                regressor_list.append( class_(**params_dict) )
+
+            # if it's the DummyClassifier, let's add a second version that always predicts the median (default always predicts the mean)
+            if class_.__name__ == "DummyRegressor" :
+                params_dict['strategy'] = 'median'
+                regressor_list.append( class_(**params_dict) )
+
+        except Exception as e :
+            logging.error("Cannot instantiate regressor \"%s\" (exception: \"%s\"), skipping..." % (name, str(e))) 
+
+    # add other regressors, taken from local libraries
+    regressor_list.append(PolynomialRegressor(2))
+    regressor_list.append(PolynomialRegressor(3))
+
+    logging.info("A total of %d regressors will be used: %s" % (len(regressor_list), str(regressor_list)))
+
+    sys.exit(0) # TODO remove this
     
     regressorsList = [
             

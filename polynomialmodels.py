@@ -23,6 +23,9 @@ class PolynomialRegressor :
 
     def __str__(self) :
         return "PolynomialRegressor_%d" % self.max_degree
+
+    def __repr__(self) :
+        return "PolynomialRegressor(max_degree=%d)" % self.max_degree
     
     def fit(self, X, y) :
             
