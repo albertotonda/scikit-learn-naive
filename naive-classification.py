@@ -244,6 +244,12 @@ def main() :
                 params_dict['strategy'] = 'uniform'
                 classifier_list.append( class_(**params_dict) )
 
+            # if it's SVC, we can add variants with different kernels; default is "rbf"
+            if class_.__name__ == "SVC" :
+                for kernel in ["linear", "poly", "sigmoid"] :
+                    params_dict["kernel"] = kernel
+                    classifier_list.append( class_(**params_dict) )
+
         except Exception as e :
             logging.error("Cannot instantiate classifier \"%s\" (exception: \"%s\"), skipping..." % (name, str(e))) 
 
@@ -328,6 +334,14 @@ def main() :
         # or a specific type of strategy, in the case of DummyClassifier
         match = regex.search("strategy='(\w+)'", classifier_string)
         if match : classifierName += "_" + match.group(1)
+
+        # or a specific type of kernel, in the case of SVC
+        if classifier_string.startswith("SVC") :
+            match = regex.search("kernel='(\w+)'", classifier_string)
+            if match :
+                classifierName += "_" + match.group(1)
+            else :
+                classifierName += "_rbf" # the default value
 
         logging.info("Classifier #%d/%d: %s..." % (classifierIndex+1, len(classifier_list), classifierName))
         
@@ -517,7 +531,7 @@ def main() :
         for data_preprocessing in performances[classifier_name] :
             
             if len(performances[classifier_name][data_preprocessing]["test"][reference_metric]) > 0 :
-                print(performances[classifier_name][data_preprocessing]) # TODO comment this, debugging
+                #print(performances[classifier_name][data_preprocessing]) # TODO comment this, debugging
 
                 df_dict["classifier"].append(classifier_name)
                 df_dict["preprocessing"].append(data_preprocessing)

@@ -19,59 +19,10 @@ from polynomialmodels import PolynomialRegressor
 from humanmodels import HumanRegressor
 
 # scikit-learn stuff
-from sklearn.metrics import r2_score
-from sklearn.metrics import explained_variance_score
-from sklearn.metrics import mean_squared_error
-from sklearn.metrics import mean_absolute_error
-
-from sklearn.model_selection import train_test_split
-from sklearn.model_selection import ShuffleSplit
-from sklearn.model_selection import LeaveOneOut
-
+from sklearn.metrics import explained_variance_score, mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, r2_score
+from sklearn.model_selection import LeaveOneOut, ShuffleSplit, train_test_split
 from sklearn.preprocessing import StandardScaler
-
 from sklearn.utils import all_estimators
-
-# list of all regressors included in scikit-learn
-from sklearn.cross_decomposition import PLSRegression
-
-from sklearn.ensemble import AdaBoostRegressor
-from sklearn.ensemble import BaggingRegressor
-from sklearn.ensemble import ExtraTreesRegressor
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.ensemble import RandomForestRegressor
-
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import DotProduct, WhiteKernel
-
-from sklearn.isotonic import IsotonicRegression
-
-from sklearn.kernel_ridge import KernelRidge
-
-from sklearn.linear_model import ARDRegression
-from sklearn.linear_model import BayesianRidge
-from sklearn.linear_model import ElasticNetCV
-from sklearn.linear_model import LarsCV
-from sklearn.linear_model import LassoCV
-from sklearn.linear_model import LinearRegression
-from sklearn.linear_model import PassiveAggressiveRegressor
-
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.neighbors import RadiusNeighborsRegressor
-
-from sklearn.neural_network import BernoulliRBM
-
-from sklearn.svm import SVR
-from sklearn.svm import LinearSVR
-from sklearn.svm import NuSVR
-
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.tree import ExtraTreeRegressor
-
-# and here is the keras-related stuff
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.wrappers.scikit_learn import KerasRegressor
 
 # now, this is new and exciting stuff: Generalized Additive Models (GAM) from module pyGAM
 from pygam import LinearGAM 
@@ -183,6 +134,17 @@ def relativeFeatureImportance(classifier) :
 ########################################## MAIN ###################################################
 def main() :
 
+    # hard-coded values
+    numberOfSplits = 10 # TODO change number of splits from command line
+
+    # metrics considered
+    metrics = dict()
+    metrics["explained_variance"] = explained_variance_score
+    metrics["MAE"] = mean_absolute_error
+    metrics["MSE"] = mean_squared_error
+    metrics["r2"] = r2_score
+    metrics["MA%E"] = mean_absolute_percentage_error
+
     # let's create a folder with a unique name to store results
     folderName = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M") + "-regression" 
     if not os.path.exists(folderName) : os.makedirs(folderName)
@@ -243,74 +205,9 @@ def main() :
 
     logging.info("A total of %d regressors will be used: %s" % (len(regressor_list), str(regressor_list)))
 
-    sys.exit(0) # TODO remove this
-    
-    regressorsList = [
-            
-            # human-designed regressors
-            [HumanRegressor("y = a_0 + a_1 * x + a_2 * x**2 + a_3 * x**3", map_variables_to_features={"x": 0}), "HumanRegressor"],
-
-            [PolynomialRegressor(2), "PolynomialRegressor2"],
-            #[PolynomialRegressor(3), "PolynomialRegressor3"],
-            # keras neural network
-            #[ANNRegressor(epochs=500, batch_size=32, layers=[16,4]), "KerasRegressor8-4"],
-            #[ANNRegressor(epochs=700, batch_size=32, layers=[16,8]), "KerasRegressor16-8"],
-            
-            # cross decomposition
-            [PLSRegression(), "PLSRegression"],
-
-            # ensemble
-            [AdaBoostRegressor(), "AdaBoostRegressor"],
-            [BaggingRegressor(), "BaggingRegressor"],
-            [BaggingRegressor(n_estimators=100), "BaggingRegressor_100"],
-            [BaggingRegressor(n_estimators=300), "BaggingRegressor_300"],
-            [ExtraTreesRegressor(), "ExtraTreesRegressor"],
-            [GradientBoostingRegressor(), "GradientBoostingRegressor"],
-            [RandomForestRegressor(), "RandomForestRegressor"],
-            [RandomForestRegressor(n_estimators=100), "RandomForestRegressor_100"],
-            [RandomForestRegressor(n_estimators=300), "RandomForestRegressor_300"],
-            
-            # isotonic
-            #[IsotonicRegression(), "IsotonicRegression"], # apparently wants "X" as a 1d array
-            
-            # kernel ridge
-            [KernelRidge(), "KernelRidge"],
-
-            # linear
-            #[ARDRegression(), "ARDRegression"], # takes too much time to train
-            [BayesianRidge(), "BayesianRidge"],
-            [ElasticNetCV(), "ElasticNetCV"],
-            [LarsCV(), "LarsCV"],
-            [LassoCV(), "LassoCV"],
-            [LinearRegression(), "LinearRegression"],
-            [PassiveAggressiveRegressor(), "PassiveAggressiveRegressor"],
-        
-            # neighbors
-            [KNeighborsRegressor(), "KNeighborsRegressor"],
-            [RadiusNeighborsRegressor(), "RadiusNeighborsRegressor"],
-            
-            # neural networks
-            #[BernoulliRBM(), "BernoulliRBM"], # has a different interface, no "predict"
-            
-            # svm
-            [SVR(), "SVR"],
-            [LinearSVR(), "LinearSVR"],
-            [NuSVR(), "NuSVR"],
-            
-            # tree
-            [DecisionTreeRegressor(), "DecisionTreeRegressor (max depth 10)"],
-            [ExtraTreeRegressor(), "ExtraTreeRegressor"],
-            
-            # generalized additive models
-            [LinearGAM(n_splines=20), "LinearGAM(n_splines=20)"],
-
-            # gaussian processes
-            [GaussianProcessRegressor(kernel=DotProduct() + WhiteKernel()), "GaussianProcessRegressor"],
-            
-            ]
-
+    # TODO the following lines are a CRIME AGAINST THE GODS OF PROGRAMMING, FORGIVE ME, but we will take it into account later
+    # setting up variables
     X = y = X_train = X_test = y_train = y_test = variablesX = variablesY = None
-    numberOfSplits = 10 # TODO change number of splits from command line
     
     if True :
         # this is just a dumb benchmark
