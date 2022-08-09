@@ -1,11 +1,13 @@
 # Simple Python script that iterates over several regression methods and tests them on a given dataset
-# by Alberto Tonda, 2016-2019 <alberto.tonda@gmail.com>
+# by Alberto Tonda, 2016-2022 <alberto.tonda@gmail.com>
 
+import copy
 import datetime
 import logging
 import multiprocessing # this is used just to assess number of available processors
 import numpy as np
 import os
+import pandas as pd
 import pickle
 import sys
 
@@ -136,6 +138,7 @@ def main() :
 
     # hard-coded values
     numberOfSplits = 10 # TODO change number of splits from command line
+    reference_metric = "r2" # metric that is used by default to sort the regressors
 
     # metrics considered
     metrics = dict()
@@ -159,7 +162,7 @@ def main() :
     np.random.seed(random_seed)
 
     # automatically create the list of regressors
-    regressor_list = []
+    regressor_dict = dict()
     estimators = all_estimators(type_filter="regressor")
 
     for name, class_ in estimators :
@@ -184,32 +187,40 @@ def main() :
             if 'n_jobs' in params :
                 params_dict['n_jobs'] = max(multiprocessing.cpu_count() - 1, 1) # use maximum available minus one; if it is zero, just use one
 
-            regressor_list.append( class_(**params_dict) )
+            # create the name of the regressor, starting from the class string
+            regressor_name = name 
+
+            # add the regressor
+            regressor_dict[regressor_name] = class_(**params_dict)
 
             # if it accepts a parameter called 'n_estimators', let's create a second instance and go overboard 
             if 'n_estimators' in params :
                 params_dict['n_estimators'] = 300
-                regressor_list.append( class_(**params_dict) )
+                regressor_dict[regressor_name + "_300"] = class_(**params_dict)
 
-            # if it's the DummyClassifier, let's add a second version that always predicts the median (default always predicts the mean)
+            # if it's the DummyRegressor, let's add a second version that always predicts the median (default always predicts the mean)
             if class_.__name__ == "DummyRegressor" :
                 params_dict['strategy'] = 'median'
-                regressor_list.append( class_(**params_dict) )
+                regressor_dict[regressor_name + "_median"] = class_(**params_dict)
 
         except Exception as e :
             logging.error("Cannot instantiate regressor \"%s\" (exception: \"%s\"), skipping..." % (name, str(e))) 
 
     # add other regressors, taken from local libraries
-    regressor_list.append(PolynomialRegressor(2))
-    regressor_list.append(PolynomialRegressor(3))
+    regressor_dict["PolynomialRegressor_2"] = PolynomialRegressor(2)
+    regressor_dict["PolynomialRegressor_3"] = PolynomialRegressor(3)
 
-    logging.info("A total of %d regressors will be used: %s" % (len(regressor_list), str(regressor_list)))
+    ### THIS PART IS JUST USED FOR DEBUGGING, JUST BRUTALLY SELECTING REGRESSORS TO HAVE FASTER TESTS
+    regressor_dict = { regressor_name : regressor for regressor_name, regressor in regressor_dict.items() if regressor_name.startswith("RandomForest") }
+    ### END OF THE DEBUGGING PART
+
+    logging.info("A total of %d regressors will be used: %s" % (len(regressor_dict), str(regressor_dict)))
 
     # TODO the following lines are a CRIME AGAINST THE GODS OF PROGRAMMING, FORGIVE ME, but we will take it into account later
     # setting up variables
     X = y = X_train = X_test = y_train = y_test = variablesX = variablesY = None
     
-    if True :
+    if False :
         # this is just a dumb benchmark
         X, y, variablesX, variablesY = common.loadEasyBenchmark()
 
@@ -225,7 +236,7 @@ def main() :
     if False :
         X, y, variablesX, variablesY = common.loadYongShiDataCalibration()
     
-    if False :
+    if True :
         from sklearn.datasets import load_linnerud
         X, y = load_linnerud(return_X_y=True)
     
@@ -302,12 +313,10 @@ def main() :
 
         # initialize performance dictionary of arrays
         performances[variableY] = dict()
-        for regressor, regressorName in regressorsList : 
+        for regressorName, regressor in regressor_dict.items() : 
             performances[variableY][regressorName] = dict()
-            performances[variableY][regressorName]["r^2"] = []
-            performances[variableY][regressorName]["e.v"] = []
-            performances[variableY][regressorName]["mse"] = []
-            performances[variableY][regressorName]["mae"] = []
+            for metric_name, metric_function in metrics.items() :
+                performances[variableY][regressorName][metric_name] = []
             performances[variableY][regressorName]["predicted"] = []
             
         # this is used to store all values of each fold, in order; maybe there's a smarter way to do it
@@ -331,161 +340,143 @@ def main() :
             X_train = scalerX.fit_transform(X_train)
             X_test = scalerX.transform(X_test)
             
-            y_train = scalerY.fit_transform(y_train.reshape(-1,1)).ravel() # this "reshape/ravel" here is just to avoid warnings, it has no true effect on data
-            y_test = scalerY.transform(y_test.reshape(-1,1)).ravel()
+            # this 'reshape' is unfortunately needed by StandardScaler
+            y_train = scalerY.fit_transform(y_train.reshape(-1,1))
+            y_test = scalerY.transform(y_test.reshape(-1,1))
             
             # now, we store points of the folder in order of how they appear
             foldPointsInOrder.extend( list(scalerY.inverse_transform(y_test)) )
             
-            for regressorIndex, regressorData in enumerate(regressorsList) :
-                
-                regressor = regressorData[0]
-                regressorName = regressorData[1]
+            for regressorIndex, regressorData in enumerate(regressor_dict.items()) :
+
+                regressorName, regressor = regressorData
             
-                logging.info( "Fold #%d/%d: training regressor #%d/%d \"%s\"" % (foldIndex+1, numberOfSplits, regressorIndex+1, len(regressorsList), regressorName) )
+                logging.info( "Fold #%d/%d: training regressor #%d/%d \"%s\"" % (foldIndex+1, numberOfSplits, regressorIndex+1, len(regressor_dict), regressorName) )
 
                 try :
-                    regressor.fit(X_train, y_train)
+                    regressor.fit(X_train, y_train.ravel())
                     
+                    # get predictions
                     y_test_predicted = regressor.predict(X_test)
-                    r2Test = r2_score(y_test, y_test_predicted)
-                    mseTest = mean_squared_error(y_test, y_test_predicted)
-                    maeTest = mean_absolute_error(y_test, y_test_predicted)
-                    varianceTest = explained_variance_score(y_test, y_test_predicted)
+                    y_train_predicted = regressor.predict(X_train) # TODO at the moment, this is not used
 
-                    logging.info("R^2 score (test): %.4f" % r2Test)
-                    logging.info("EV score (test): %.4f" % varianceTest)
-                    logging.info("MSE score (test): %.4f" % mseTest)
-                    logging.info("MAE score (test): %.4f" % maeTest)
-                    
-                    # add performance to the list of performances
-                    performances[variableY][regressorName]["r^2"].append( r2Test )
-                    performances[variableY][regressorName]["e.v"].append( varianceTest )
-                    performances[variableY][regressorName]["mse"].append( mseTest )
-                    performances[variableY][regressorName]["mae"].append( maeTest )
+                    # for each metric, call the corresponding function and compute the result
+                    for metric_name, metric_function in metrics.items() :
+                        performances[variableY][regressorName][metric_name].append( metric_function(y_test, y_test_predicted) )
+                        logging.info("- %s score (test): %.4f" % (metric_name, performances[variableY][regressorName][metric_name][-1]))
+
                     # also record the predictions, to be used later in a global figure
-                    performances[variableY][regressorName]["predicted"].extend( list(scalerY.inverse_transform(y_test_predicted)) )
+                    performances[variableY][regressorName]["predicted"].extend( list(scalerY.inverse_transform(y_test_predicted.reshape(-1,1))) )
                     
-                    try: 
-                        import matplotlib.pyplot as plt
+                    # plots
+                    import matplotlib.pyplot as plt
 
-                        # plotting first figure, with points 'x' and 'o'
-                        y_predicted = regressor.predict(scalerX.transform(X)) # 'X' was never wholly rescaled before
-                        y_train_predicted = regressor.predict(X_train)
-                        
-                        plt.figure()
-                        
-                        plt.scatter(train_index, y_train, c="gray", label="training data")
-                        plt.scatter(test_index, y_test, c="green", label="test data")
+                    # plotting first figure, with points 'x' and 'o'
+                    y_predicted = regressor.predict(scalerX.transform(X)) # 'X' was never wholly rescaled before
+                    y_train_predicted = regressor.predict(X_train)
+                    
+                    # TODO actually use PROPER matplotlib syntax to deal with this
+                    plt.figure()
+                    
+                    plt.scatter(train_index, y_train, c="gray", label="training data")
+                    plt.scatter(test_index, y_test, c="green", label="test data")
 
-                        plt.plot(np.arange(len(y_predicted)), y_predicted, 'x', c="red", label="regression")
-                        plt.xlabel("order of data samples")
-                        plt.ylabel("target")
-                        plt.title(regressorName + ", R^2=%.4f (test)" % r2Test)
-                        plt.legend()
-                        
-                        logging.info("Saving figure...")
-                        plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + ".pdf") )
-                        plt.close()
-                        
-                        # plotting second figure, with everything close to a middle line
-                        plt.figure()
-                        
-                        plt.plot(y_train, y_train_predicted, 'r.', label="training set") # points
-                        plt.plot(y_test, y_test_predicted, 'go', label="test set") # points
-                        plt.plot([min(y_train.min(), y_test.min()), max(y_train.max(), y_test.max())], [min(y_train_predicted.min(), y_test_predicted.min()), max(y_train_predicted.max(), y_test_predicted.max())], 'k--') # line
-                        
-                        plt.xlabel("measured")
-                        plt.ylabel("predicted")
-                        plt.title(regressorName + " measured vs predicted, " + variableY)
-                        plt.legend(loc='best')
+                    plt.plot(np.arange(len(y_predicted)), y_predicted, 'x', c="red", label="regression")
+                    plt.xlabel("order of data samples")
+                    plt.ylabel("target")
+                    plt.title(regressorName + ", R^2=%.4f (test)" % performances[variableY][regressorName]["r2"][-1])
+                    plt.legend()
+                    
+                    logging.info("Saving figure...")
+                    plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + ".pdf") )
+                    plt.close()
+                    
+                    # plotting second figure, with everything close to a middle line
+                    plt.figure()
+                    
+                    plt.plot(y_train, y_train_predicted, 'r.', label="training set") # points
+                    plt.plot(y_test, y_test_predicted, 'go', label="test set") # points
+                    plt.plot([min(y_train.min(), y_test.min()), max(y_train.max(), y_test.max())], [min(y_train_predicted.min(), y_test_predicted.min()), max(y_train_predicted.max(), y_test_predicted.max())], 'k--') # line
+                    
+                    plt.xlabel("measured")
+                    plt.ylabel("predicted")
+                    plt.title(regressorName + " measured vs predicted, " + variableY)
+                    plt.legend(loc='best')
 
-                        plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + "-b.pdf") )
-                        plt.close()
-                        
-                        # also, save ordered list of features
-                        featuresByImportance = relativeFeatureImportance(regressor)
+                    plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + "-b.pdf") )
+                    plt.close()
+                    
+                    # also, save ordered list of features
+                    featuresByImportance = relativeFeatureImportance(regressor)
 
-                        # if list exists, write feature importance to disk
-                        # TODO horrible hack here, to avoid issues with GAM
-                        if len(featuresByImportance) > 0 and "GAM" not in regressorName :
-                            featureImportanceFileName = regressorName + "-" + variableY + "-featureImportance-fold" + str(foldIndex) + ".csv"
-                            with open( os.path.join(folderName, featureImportanceFileName), "w") as fp :
-                                fp.write("feature,importance\n")
-                                for featureImportance, featureIndex in featuresByImportance :
-                                    fp.write( variablesX[int(featureIndex)] + "," + str(featureImportance) + "\n")
-                            
-
-                    except ImportError:
-                        logging.info("Cannot import matplotlib. Skipping plots...")
-                
-                except Exception as e:
-                    logging.info("Regressor \"" + regressorName + "\" failed on variable \"" + variableY + "\":" + str(e))
+                    # if list exists, write feature importance to disk
+                    # TODO horrible hack here, to avoid issues with GAM
+                    if len(featuresByImportance) > 0 and "GAM" not in regressorName :
+                        featureImportanceFileName = regressorName + "-" + variableY + "-featureImportance-fold" + str(foldIndex) + ".csv"
+                        with open( os.path.join(folderName, featureImportanceFileName), "w") as fp :
+                            fp.write("feature,importance\n")
+                            for featureImportance, featureIndex in featuresByImportance :
+                                fp.write( variablesX[int(featureIndex)] + "," + str(featureImportance) + "\n")
+            
+                except Exception as e :
+                    logging.error("Regressor \"" + regressorName + "\" failed on variable \"" + variableY + "\":", e)
 
     logging.info("Final summary:")
-    with open( os.path.join(folderName, "00_summary.txt"), "w") as fp :
             
-        for variableY in variablesY :
+    for variableY in variablesY :
 
-            logging.info("For variable \"" + variableY + "\"")
-            fp.write("For variable: " + variableY + " = f(" + variablesX[0])
-            for i in range(1, len(variablesX)) : fp.write("," + variablesX[i])
-            fp.write(")\n")
-            
-            # create a list from the dictionary and sort it
-            sortedPerformances = sorted( [ (performances[variableY][regressorName], regressorName) for regressorName in performances[variableY] ], key=lambda x : np.mean( x[0]["r^2"] ), reverse=True)
+        logging.info("For variable \"" + variableY + "\"")
 
-            for regressorData in sortedPerformances :
-                regressorName = regressorData[1]
-                regressorScore = regressorData[0]
+        # we will start creating a dictionary that will be later converted to a Pandas DataFrame and sorted
+        # we are going to create a different CSV file for each regression variable
+        df_dict = dict()
+        df_dict["regressor"] = []
+        for metric_name in metrics :
+            df_dict[metric_name + " (mean)"] = []
+            df_dict[metric_name + " (std)"] = []
+
+        # go over the metrics and print out some statistics
+        for regressorName, regressorScores in performances[variableY].items() :
+
+            logging.info("For regressor \"%s\":" % regressorName)
+            df_dict["regressor"].append(regressorName)
+
+            for metric_name, metric_function in metrics.items() : 
+                metric_mean = np.mean(regressorScores[metric_name])
+                metric_std = np.std(regressorScores[metric_name])
+                logging.info("\t- %s, mean=%.4f (std=%.4f)" % (metric_name, metric_mean, metric_std))
+
+                df_dict[metric_name + " (mean)"].append(metric_mean)
+                df_dict[metric_name + " (std)"].append(metric_std)
+
+            # also, plot a "global" graph
+            # issue here, if a regressor fails, you have incongruent matrixes: a check is in order
+            # TODO also, the plot looks really bad if some values are negative; turn everything to absolute values?
+            if len(foldPointsInOrder) == len( regressorScores["predicted"] ) :
+                fig = plt.figure()
+                ax = fig.add_subplot(111)
                 
-                r2Mean = np.mean( regressorScore["r^2"] )
-                r2std = np.std( regressorScore["r^2"] )
+                #bottom_left_corner = [min(foldPointsInOrder), max(foldPointsInOrder)]
+                #top_right_corner = [min(regressorScore["predicted"]), max(regressorScore["predicted"])]
+                x_bottom_top = [0, max(foldPointsInOrder)]
+                y_bottom_top = [0, max(foldPointsInOrder)]
 
-                varianceMean = np.mean( regressorScore["e.v"] )
-                varianceStd = np.std( regressorScore["e.v"] )
-
-                mseMean = np.mean( regressorScore["mse"] )
-                mseStd = np.std( regressorScore["mse"] )
-
-                maeMean = np.mean( regressorScore["mae"] )
-                maeStd = np.std( regressorScore["mae"] )
-
-                logging.info("\t- %s, R^2=%.4f (std=%.4f), Explained Variance=%.4f (std=%.4f), MSE=%.4f (std=%.4f), MAE=%.4f (std=%.4f)" % 
-                    (regressorName, r2Mean, r2std, varianceMean, varianceStd, mseMean, mseStd, maeMean, maeStd) )
-
-                fp.write("\t- %s, R^2=%.4f (std=%.4f), Explained Variance=%.4f (std=%.4f), MSE=%.4f (std=%.4f), MAE=%.4f (std=%.4f)\n" % 
-                    (regressorName, r2Mean, r2std, varianceMean, varianceStd, mseMean, mseStd, maeMean, maeStd))
-
-                fp.write("\t\t- R^2:" + str([ "%.4f" % x for x in regressorScore["r^2"] ]) + "\n") 
-                fp.write("\t\t- E.V.:" + str([ "%.4f" % x for x in regressorScore["e.v"] ]) + "\n") 
-                fp.write("\t\t- MSE:" + str([ "%.4f" % x for x in regressorScore["mse"] ]) + "\n") 
-                fp.write("\t\t- MAE:" + str([ "%.4f" % x for x in regressorScore["mae"] ]) + "\n") 
+                ax.plot(foldPointsInOrder, regressorScores["predicted"], 'g.') # points
+                ax.plot(x_bottom_top, y_bottom_top, 'k--', label="1:1") # line
+                ax.plot(x_bottom_top, [y_bottom_top[0]*1.20, y_bottom_top[1]*1.20], 'r--', label="20% error")
+                ax.plot(x_bottom_top, [y_bottom_top[0]*0.80, y_bottom_top[1]*0.80], 'r--')
                 
-                # also, plot a "global" graph
-                # issue here, if a regressor fails, you have incongruent matrixes: a check is in order
-                # TODO also, the plot looks really bad if some values are negative; turn everything to absolute values?
-                if len(foldPointsInOrder) == len( regressorScore["predicted"] ) :
-                    fig = plt.figure()
-                    ax = fig.add_subplot(111)
-                    
-                    #bottom_left_corner = [min(foldPointsInOrder), max(foldPointsInOrder)]
-                    #top_right_corner = [min(regressorScore["predicted"]), max(regressorScore["predicted"])]
-                    x_bottom_top = [0, max(foldPointsInOrder)]
-                    y_bottom_top = [0, max(foldPointsInOrder)]
+                ax.set_title(regressorName + " measured vs predicted, " + variableY + " (all test)")
+                ax.set_xlabel("measured")
+                ax.set_ylabel("predicted")
+                ax.legend(loc='best')
+    
+                plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-global-b.png") )
+                plt.close(fig)
 
-                    ax.plot(foldPointsInOrder, regressorScore["predicted"], 'g.') # points
-                    ax.plot(x_bottom_top, y_bottom_top, 'k--', label="1:1") # line
-                    ax.plot(x_bottom_top, [y_bottom_top[0]*1.20, y_bottom_top[1]*1.20], 'r--', label="20% error")
-                    ax.plot(x_bottom_top, [y_bottom_top[0]*0.80, y_bottom_top[1]*0.80], 'r--')
-                    
-                    ax.set_title(regressorName + " measured vs predicted, " + variableY + " (all test)")
-                    ax.set_xlabel("measured")
-                    ax.set_ylabel("predicted")
-                    ax.legend(loc='best')
-        
-                    plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-global-b.png") )
-                    plt.close(fig)
+        # here, we finished the loop
+        df = pd.DataFrame.from_dict(df_dict)
+        df.to_csv(os.path.join(folderName, "00_final_result_" + variableY + ".csv"), index=False)
 
     #logging.info("Saving the best regressor for each variable:")
     #for i in range(0, iterations) :
