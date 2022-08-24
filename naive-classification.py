@@ -1,6 +1,7 @@
 # Simple script to test the best classifier for the problem
 # by Alberto Tonda, 2016-2022 <alberto.tonda@gmail.com>
 
+import argparse
 import copy
 import datetime
 import itertools
@@ -31,7 +32,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, auc, confusion_matrix, f1_score, matthews_corrcoef, roc_auc_score, roc_curve, RocCurveDisplay 
 from sklearn.utils import all_estimators
 
-# TODO: divide classifiers into "families" and test each family separately
 # TODO: there are some very complex classifiers, such as VotingClassifier: to be explored
 # TODO: also, GridSearchCv makes an exhaustive search over the classifer's parameters (?): to be explored
 # TODO: refactor code properly, add command-line options
@@ -178,7 +178,6 @@ def get_relative_feature_importance(classifier) :
 ############################################################## MAIN
 def main() :
 	
-    # TODO argparse? maybe divide into "fast", "exhaustive", "heuristic"; also add option to specify file from command line (?)
     # hard-coded values here
     n_splits = 10
     final_report_file_name = "00_final_report.csv"
@@ -191,6 +190,14 @@ def main() :
     metrics["F1"] = f1_score
     metrics["MCC"] = matthews_corrcoef
 
+    # TODO argparse? maybe divide into "fast", "exhaustive", "heuristic"; also add option to specify file from command line (?)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--random_seed", help="Set a specific random seed. If not specified, it will be set through system time.", type=int)
+    parser.add_argument("--csv", help="Dataset in CSV format. A column must be marked as 'target' and will be used as such. If no 'target' is specified, another column name must be specified through command-line argument '--target'")
+    parser.add_argument("--target", help="Name of the target column. It's only used if '--csv' is specified.")
+    parser.add_argument("--folds", help="Name of the CSV dataset column that will be used to specify the folds. If not specified, data will be randomly split in stratified folds")
+    args = parser.parse_args()
+
     # create uniquely named folder
     folder_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M") + "-classification" 
     if not os.path.exists(folder_name) : os.makedirs(folder_name)
@@ -199,8 +206,13 @@ def main() :
     common.initialize_logging(folder_name)
 
     # generate a random seed that will be used for all the experiments
-    random_seed = int(datetime.datetime.now().timestamp())
+    random_seed = None
+    if not args.random_seed :
+        random_seed = int(datetime.datetime.now().timestamp())
+    else :
+        random_seed = args.random_seed
     logging.info("Random seed that will be used for all experiments: %d" % random_seed)
+
     # set the numpy random number generator with the seed
     np.random.seed(random_seed)
 
@@ -273,16 +285,41 @@ def main() :
     logging.info("A total of %d classifiers will be used: %s" % (len(classifier_list), str(classifier_list)))
     
     # this part can be used by some case studies, storing variable names
-    variableY = variablesX = None
+    df = X = y = variableY = variablesX = None
 
-    # get data
-    logging.info("Loading data...")
-    X, y, variablesX, variablesY = common.loadRallouData() # TODO replace here to load different data
-    #X, y, variablesX, variablesY = common.loadCoronaData()
-    #X, y, variablesX, variablesY = common.loadXORData()
-    #X, y, variablesX, variablesY = common.loadMl4Microbiome()
-    #X, y, variablesX, variablesY = common.loadMl4MicrobiomeCRC()
-    variableY = variablesY[0]
+    # let's see if the dataset name has been specified on the command line
+    if args.csv is not None :
+        logging.info("CSV file specified on command line, \"%s\". Loading data..." % args.csv) 
+        df = pd.read_csv(args.csv)
+        df.reset_index(drop=True, inplace=True) # avoid weird indices, this restarts them from 0
+
+        target_variable_name = "target"
+        if args.target is not None : target_variable_name = args.target
+
+        if target_variable_name not in df.columns :
+            logging.error("Column \"%s\" not found in CSV dataset \"%s\". Aborting...")
+            sys.exit(0)
+
+        # specify variables which are not part of the features; the target is not part of the features,
+        # but also the column with the names of the folds could be specified and thus not be part of the features
+        variables_not_in_X = [target_variable_name]
+        if args.folds is not None : variables_not_in_X.append(args.folds)
+
+        variablesX = [c for c in df.columns if c not in variables_not_in_X]
+        variableY = target_variable_name
+
+        X = df[variablesX].values
+        y = df[variableY].values
+        
+    else :
+        # get data
+        logging.info("Loading data...")
+        #X, y, variablesX, variablesY = common.loadRallouData() # TODO replace here to load different data
+        #X, y, variablesX, variablesY = common.loadCoronaData()
+        #X, y, variablesX, variablesY = common.loadXORData()
+        #X, y, variablesX, variablesY = common.loadMl4Microbiome()
+        X, y, variablesX, variablesY = common.loadMl4MicrobiomeCRC()
+        variableY = variablesY[0]
 
     logging.info("Shape of X: " + str(X.shape))
     logging.info("Shape of y: " + str(y.shape))
@@ -313,9 +350,36 @@ def main() :
     # this is a utility dictionary, that will be used to create a more concise summary
     performances = dict()
 
-    # perform stratified k-fold cross-validation, but explicitly
-    skf = StratifiedKFold(n_splits=n_splits, shuffle=True)
-    folds = [ [train_index, test_index] for train_index, test_index in skf.split(X, y) ]
+    # initialize k-fold cross-validation
+    folds = None
+    
+    if args.folds is not None :
+        # if the column that defines the folds is specified, let's look at it and build folds accordingly
+        folds_column = args.folds
+        if folds_column not in df.columns :
+            logging.error("Column describing folds \"%s\" not found in CSV dataset \"%s\". Aborting..." % (folds_column, args.csv))
+            sys.exit(0)
+
+        # let's look at the unique values inside the column
+        folds_names = df[folds_column].unique()
+        logging.info("Found a total of %d folds" % len(folds_names))
+
+        # get indexes for each fold
+        folds = []
+        for f_i, f_name in enumerate(folds_names) :
+            train_index = df.index[df[folds_column] != f_name].tolist()
+            test_index = df.index[df[folds_column] == f_name].tolist()
+            logging.info("- Fold %d (\"%s\") has %d/%d rows" % (f_i, f_name, len(test_index), df.shape[0]))
+
+            folds.append([train_index, test_index])
+
+        # also update the number of splits, it might be different
+        n_splits = len(folds)
+
+    else :
+        # perform a randomized stratified k-fold cross-validation, but explicitly
+        skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_seed)
+        folds = [ [train_index, test_index] for train_index, test_index in skf.split(X, y) ]
 
     # TODO 	
     # - also call function for feature selection
@@ -557,6 +621,8 @@ def main() :
     final_report_file_name = os.path.join(folder_name, final_report_file_name)
     logging.info("Final results will be written to file \"" + final_report_file_name + "\"...")
     df.to_csv(final_report_file_name, index=False)
+
+    # TODO also close all logging, but this might require refactoring the logging code
 
     if False :
         with open(final_report_file_name, "w") as fp :

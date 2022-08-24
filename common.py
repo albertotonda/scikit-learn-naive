@@ -38,7 +38,7 @@ def loadMl4MicrobiomeCRC() :
 
     # select all columns that start with "msp"
     variablesX = [c for c in df.columns if c.startswith("msp")]
-    variablesX.append("country")
+    for v in ["age", "instrument_model", "westernised", "country", "gender"] : variablesX.append(v)
     variablesY = ["health_status"]
 
     X = df[variablesX].values
