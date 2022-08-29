@@ -32,6 +32,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, auc, confusion_matrix, f1_score, matthews_corrcoef, roc_auc_score, roc_curve, RocCurveDisplay 
 from sklearn.utils import all_estimators
 
+# TODO: add a fold-by-fold performance summary
+# TODO: also save predictions and/or metrics by fold
 # TODO: there are some very complex classifiers, such as VotingClassifier: to be explored
 # TODO: also, GridSearchCv makes an exhaustive search over the classifer's parameters (?): to be explored
 # TODO: refactor code properly, add command-line options
