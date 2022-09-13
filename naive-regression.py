@@ -1,6 +1,7 @@
 # Simple Python script that iterates over several regression methods and tests them on a given dataset
 # by Alberto Tonda, 2016-2022 <alberto.tonda@gmail.com>
 
+import argparse
 import copy
 import datetime
 import logging
@@ -220,75 +221,8 @@ def main() :
     # setting up variables
     X = y = X_train = X_test = y_train = y_test = variablesX = variablesY = None
     
-    if False :
-        # this is just a dumb benchmark
-        X, y, variablesX, variablesY = common.loadEasyBenchmark()
-
-    if False :
-        X, y, variablesX, variablesY = common.loadChristianQuestionnaireRegression()
-        
-    if False :
-        X, y, variablesX, variablesY = common.loadYongShiDataCalibration2("TIMBER")
-
-    if False :
-        X, y, variablesX, variablesY = common.loadLaurentBouvierNewData()
-    
-    if False :
-        X, y, variablesX, variablesY = common.loadYongShiDataCalibration()
-    
-    if True :
-        from sklearn.datasets import load_linnerud
-        X, y = load_linnerud(return_X_y=True)
-    
-    if False :
-        X, y, variablesX, variablesY = common.loadYingYingData()
-
-    if False :
-        X, y, variablesX, variablesY = common.loadCleaningDataGermanSpecific()
-        #X, y, variablesX, variablesY = common.loadCleaningDataGerman()
-
-    if False :
-        X, y, variablesX, variablesY = common.loadInsects()
-
-    if False :
-        X, y, variablesX, variablesY = common.loadMilkProcessPipesDimensionalAnalysis()
-        #X, y, variablesX, variablesY = common.loadMilkProcessPipes()
-
-    if False : # ecosystem services
-        X, y, variablesX, variablesY = common.loadEcosystemServices()
-    
-    if False :
-        X, y, variablesX, variablesY = common.loadMarcoSoil()
-    
-    if False : 
-        # load dataset
-        X, y = common.loadEureqaRegression()
-        # randomly split between training and test
-        #X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)
-
-    if False :
-        # load dataset
-        X_train, X_test, y_train, y_test = common.loadBiscuitExample()
-        logging.info("X_train: " + str(X_train.shape))
-        logging.info("X_test: "  + str(X_test.shape))
-        logging.info("y_train: " + str(y_train.shape))
-        logging.info("y_test: "  + str(y_test.shape))
-        
-        # in this particular case, I create the "global" X and y by putting together the two arrays
-        X = np.append(X_train, X_test, axis=0)
-        y = np.append(y_train, y_test, axis=0)
-
-    if False : 
-        # load dataset
-        X_train, X_test, y_train, y_test = common.loadAromoptiExample()
-        logging.info("X_train: " + str(X_train.shape))
-        logging.info("X_test: "  + str(X_test.shape))
-        logging.info("y_train: " + str(y_train.shape))
-        logging.info("y_test: "  + str(y_test.shape))
-        
-        # in this particular case, I create the "global" X and y by putting together the two arrays
-        X = np.append(X_train, X_test, axis=0)
-        y = np.append(y_train, y_test, axis=0)
+    # this is just a dumb benchmark
+    X, y, variablesX, variablesY = common.loadEasyBenchmark()
     
     logging.info("Regressing %d output variables, in function of %d input variables..." % (y.shape[1], X.shape[1]))
     
@@ -388,7 +322,7 @@ def main() :
                     plt.legend()
                     
                     logging.info("Saving figure...")
-                    plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + ".pdf") )
+                    plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + ".png"), dpi=300 )
                     plt.close()
                     
                     # plotting second figure, with everything close to a middle line
@@ -403,7 +337,7 @@ def main() :
                     plt.title(regressorName + " measured vs predicted, " + variableY)
                     plt.legend(loc='best')
 
-                    plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + "-b.pdf") )
+                    plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + "-b.png"), dpi=300 )
                     plt.close()
                     
                     # also, save ordered list of features
@@ -474,22 +408,12 @@ def main() :
                 plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-global-b.png") )
                 plt.close(fig)
 
-        # here, we finished the loop
+        # here, we finished the loop; create a dataframe from the dictionary, then sort it by the key variable
         df = pd.DataFrame.from_dict(df_dict)
+        df.sort_values(reference_metric + " (mean)", inplace=True, ascending=False)
         df.to_csv(os.path.join(folderName, "00_final_result_" + variableY + ".csv"), index=False)
 
-    #logging.info("Saving the best regressor for each variable:")
-    #for i in range(0, iterations) :
-    #    
-    #    fileName = os.path.join(folderName, "best-regressor-y" + str(i) + ".pickle")
-    #    
-    #    # this part is a little bit weird, probably changing the original list would be better, but who cares?
-    #    sortedPerformances = sorted( performances[i], key=lambda x : x[0], reverse=True)
-    #    j = 0
-    #    while regressorsList[j][1] != sortedPerformances[0][1] : j += 1
-    #    
-    #    logging.info("For variable y" + str(i) + ", pickleing \"" + regressorsList[j][1] + "\" as " + fileName + "...") 
-    #    pickle.dump( regressorsList[j][0], open(fileName, "wb"))
+        return
 
 # stuff to make the script more proper
 if __name__ == "__main__" :
