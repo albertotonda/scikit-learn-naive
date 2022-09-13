@@ -140,6 +140,7 @@ def main() :
     # hard-coded values
     numberOfSplits = 10 # TODO change number of splits from command line
     reference_metric = "r2" # metric that is used by default to sort the regressors
+    target_column = 'target'
 
     # metrics considered
     metrics = dict()
@@ -149,6 +150,15 @@ def main() :
     metrics["r2"] = r2_score
     metrics["MA%E"] = mean_absolute_percentage_error
 
+    # parsing command-line arguments
+    # TODO does it make sense to have more than one target variable?
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--random_seed", help="Set a specific random seed. If not specified, it will be set through system time.", type=int)
+    parser.add_argument("--csv", help="Data-set in CSV format. A column must be marked as 'target' and will be used as such. If no 'target' is specified, another column name must be specified through command-line argument '--target'")
+    parser.add_argument("--target", help="Name of the target column. It's only used if '--csv' is specified and no 'target' column is found in the data-set.")
+    parser.add_argument("--folds", help="Name of the CSV dataset column that will be used to specify the folds. If not specified, data will be randomly split")
+    args = parser.parse_args()
+
     # let's create a folder with a unique name to store results
     folderName = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M") + "-regression" 
     if not os.path.exists(folderName) : os.makedirs(folderName)
@@ -156,9 +166,11 @@ def main() :
     # initialize logging
     common.initialize_logging(folderName)
 
-    # generate a random seed that will be used for all the experiments
+    # generate a random seed that will be used for all the experiments (or just use the one given from command line)
     random_seed = int(datetime.datetime.now().timestamp())
+    if args.random_seed is not None : random_seed = args.random_seed
     logging.info("Random seed that will be used for all experiments: %d" % random_seed)
+
     # set the numpy random number generator with the seed
     np.random.seed(random_seed)
 
@@ -212,17 +224,52 @@ def main() :
     regressor_dict["PolynomialRegressor_3"] = PolynomialRegressor(3)
 
     ### THIS PART IS JUST USED FOR DEBUGGING, JUST BRUTALLY SELECTING REGRESSORS TO HAVE FASTER TESTS
-    regressor_dict = { regressor_name : regressor for regressor_name, regressor in regressor_dict.items() if regressor_name.startswith("RandomForest") }
+    #regressor_dict = { regressor_name : regressor for regressor_name, regressor in regressor_dict.items() if regressor_name.startswith("RandomForest") }
     ### END OF THE DEBUGGING PART
 
     logging.info("A total of %d regressors will be used: %s" % (len(regressor_dict), str(regressor_dict)))
 
-    # TODO the following lines are a CRIME AGAINST THE GODS OF PROGRAMMING, FORGIVE ME, but we will take it into account later
     # setting up variables
     X = y = X_train = X_test = y_train = y_test = variablesX = variablesY = None
+
+    if args.csv is not None :
+        df = pd.read_csv(args.csv)
+        
+        # check if the target column exists, or if it has been specified on command line
+        if target_column not in df.columns :
+            if args.target is not None :
+                target_column = args.target
+            else :
+                logging.error("Cannot find column \"%s\" in CSV file \"%s\". You'll need to specify a different target column from command line. Aborting..." % (target_column, args.csv))
+                sys.exit(0)
+
+        # before converting the dataframe to just numpy arrays, let's try to identify the categorical variables
+        # and replace them with numerical values, to avoid issues with regressors that cannot deal with them
+        categorical_columns = df.select_dtypes(include=['object']).columns.tolist() 
+        if len(categorical_columns) > 0 :
+            logging.info("Found column(s) with categorical variables \"%s\", converting them to integers..." % str(categorical_columns))
+
+        # replace each categorical column with values (in a naive way, just ascending numbers in the order they were found)
+        for cc in categorical_columns :
+            # get list of values
+            values = df[cc].unique()
+            indexes = range(len(values))
+
+            # replace values with their index
+            df.replace(to_replace=values, value=indexes, inplace=True)
+
+        # if everything is in place, parse the dataframe
+        variablesY = [target_column]
+        variablesX = [ c for c in df.columns if c not in variablesY ]
+
+        # get numpy arrays
+        X = df[variablesX].values
+        y = df[variablesY].values
     
-    # this is just a dumb benchmark
-    X, y, variablesX, variablesY = common.loadEasyBenchmark()
+    else :
+        # this is just a dumb benchmark
+        logging.info("No other dataset was specified on the command line, so a standard (easy) benchmark will be used instead...")
+        X, y, variablesX, variablesY = common.loadEasyBenchmark()
     
     logging.info("Regressing %d output variables, in function of %d input variables..." % (y.shape[1], X.shape[1]))
     
