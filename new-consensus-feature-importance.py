@@ -30,6 +30,7 @@ def main() :
 
         file_names = selected_file_names
 
+    n_files = len(file_names)
     logging.info("A total of %d files was selected: %s" % (len(file_names), str(file_names)))
 
     logging.info("Reading files and merging information...")
@@ -43,6 +44,7 @@ def main() :
 
     n_features = len(all_rankings[file_names[0]])
     logging.info("The total number of features is %d" % n_features)
+    logging.info("%s" % all_rankings[file_names[0]])
 
     top_features_percentage = math.ceil(percentage_features * n_features)
 
@@ -61,7 +63,12 @@ def main() :
     list_features_top = sorted( [ [f, features_dictionary[f]['top']] for f in features_dictionary ], key = lambda x : x[1], reverse=True )
 
     logging.info("Features that appear most frequently among the top %.2f%%: %s" % (percentage_features * 100, str(list_features_percentage)))
+    for entry in list_features_percentage :
+        logging.info("%s (%d, %.2f%%)" % (entry[0], entry[1], float(entry[1])/n_files * 100))
+
     logging.info("Features that appear most frequently among the top %d: %s" % (top_features, str(list_features_top)))
+    for entry in list_features_top :
+        logging.info("%s (%d, %.2f%%)" % (entry[0], entry[1], float(entry[1])/n_files * 100))
 
     return
 
