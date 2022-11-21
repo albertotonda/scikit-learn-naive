@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import multiprocessing # this is used just to assess number of available processors
 import numpy as np
 import pandas as pd
+import random
 import os
 import re as regex
 import sys
@@ -30,7 +31,11 @@ from keraswrappers import ANNClassifier
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, auc, confusion_matrix, f1_score, matthews_corrcoef, roc_auc_score, roc_curve, RocCurveDisplay 
-from sklearn.utils import all_estimators
+from sklearn.utils import all_estimators # this one returns all estimators
+
+# other libraries that contain scikit-learn-compatible tools, allegedly at the state of the art
+from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
 
 # TODO: add a fold-by-fold performance summary
 # TODO: also save predictions and/or metrics by fold
@@ -192,7 +197,7 @@ def main() :
     metrics["F1"] = f1_score
     metrics["MCC"] = matthews_corrcoef
 
-    # TODO argparse? maybe divide into "fast", "exhaustive", "heuristic"; also add option to specify file from command line (?)
+    # TODO maybe divide into "fast", "exhaustive", "heuristic"
     parser = argparse.ArgumentParser()
     parser.add_argument("--random_seed", help="Set a specific random seed. If not specified, it will be set through system time.", type=int)
     parser.add_argument("--csv", help="Dataset in CSV format. A column must be marked as 'target' and will be used as such. If no 'target' is specified, another column name must be specified through command-line argument '--target'")
@@ -222,7 +227,14 @@ def main() :
     classifier_list = []
     estimators = all_estimators(type_filter="classifier")
 
-    # TODO before entering this loop, we could actually add extra classifiers from other sources, as long as they are scikit-learn compatible
+    # NOTE/TODO add scikit-learn-compatible classifiers from other sources
+    estimators = [] # TODO remove this
+    estimators.append(("XGBClassifier", XGBClassifier))
+    estimators.append(("LGBMClassifier", LGBMClassifier))
+    
+    print(estimators)
+
+    # before entering this loop, we could actually add extra classifiers from other sources, as long as they are scikit-learn compatible
     for name, class_ in estimators :
         # try to infer if classifiers accept special parameters (e.g. 'random_seed') and add them as keyword arguments
         # we try to instantiate the classifier
@@ -332,18 +344,21 @@ def main() :
     # let's output some details about the data, that might be important
     logging.info("Class distribution for the %d classes." % len(classes))
     for i, c in enumerate(classes) :
-        logging.info("- Class %d has %.4f of the samples in the dataset." % (c, float(classesCount[i]) / float(y.shape[0])))
+        logging.info("- Class \"%s\" has %.4f of the samples in the dataset." % (str(c), float(classesCount[i]) / float(y.shape[0])))
 	
     # an interesting comparison: what's the performance of a random classifier?
     # TODO this could be replaced by DummyClassifier
-    random_scores = { metric_name : [] for metric_name, metric_function in metrics.items() }
-    for i in range(0, 100) :
-        y_random = np.random.randint( min(classes), high=max(classes)+1, size=y.shape[0] )
-        for metric_name, metric_function in metrics.items() :
-            random_scores[metric_name].append( metric_function(y, y_random) )
-    logging.info("As a comparison, randomly picking labels 100 times returns the following scores:")
-    for metric_name, metric_scores in random_scores.items() :
-        logging.info("- Mean %s: %.4f (+/- %.4f)" % (metric_name, np.mean(metric_scores), np.std(metric_scores)))
+    if False :
+        random_scores = { metric_name : [] for metric_name, metric_function in metrics.items() }
+        for i in range(0, 100) :
+            y_random = [ classes[k] for k in np.random.randint(0, high=len(classes), size=y.shape[0]) ]
+            y_random = [ random.choice(classes) for k in range(0, y.shape[0]) ]
+            y_random = np.reshape(y_random, y.shape)
+            for metric_name, metric_function in metrics.items() :
+                random_scores[metric_name].append( metric_function(y, y_random) )
+        logging.info("As a comparison, randomly picking labels 100 times returns the following scores:")
+        for metric_name, metric_scores in random_scores.items() :
+            logging.info("- Mean %s: %.4f (+/- %.4f)" % (metric_name, np.mean(metric_scores), np.std(metric_scores)))
 
     # check: do the variables' names exist? if not, put some placeholders
     if variableY is None : variableY = "Y"
