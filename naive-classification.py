@@ -228,7 +228,6 @@ def main() :
     estimators = all_estimators(type_filter="classifier")
 
     # NOTE/TODO add scikit-learn-compatible classifiers from other sources
-    estimators = [] # TODO remove this
     estimators.append(("XGBClassifier", XGBClassifier))
     estimators.append(("LGBMClassifier", LGBMClassifier))
     
