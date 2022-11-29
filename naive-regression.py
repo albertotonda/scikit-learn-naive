@@ -30,6 +30,10 @@ from sklearn.utils import all_estimators
 # now, this is new and exciting stuff: Generalized Additive Models (GAM) from module pyGAM
 from pygam import LinearGAM 
 
+# but not only, here comes the state of the art for ensemble models, XGBoost and LightGBM
+from xgboost import XGBRegressor
+from lightgbm import LGBMRegressor
+
 # this is a class that can be used to wrap Eureqa equations
 # the annoying part is to find the corresponding named variables inside
 # array 'X'
@@ -177,6 +181,11 @@ def main() :
     # automatically create the list of regressors
     regressor_dict = dict()
     estimators = all_estimators(type_filter="regressor")
+
+    # NOTE/TODO add scikit-learn-compatible classifiers from other sources
+    estimators.append(("XGBRegressor", XGBRegressor))
+    estimators.append(("LightGBMRegressor", LightGBMRegressor))
+    # TODO implement a pygamregressor?
 
     for name, class_ in estimators :
         # try to infer if classifiers accept special parameters (e.g. 'random_seed') and add them as keyword arguments
