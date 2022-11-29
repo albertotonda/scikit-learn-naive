@@ -184,7 +184,7 @@ def main() :
 
     # NOTE/TODO add scikit-learn-compatible classifiers from other sources
     estimators.append(("XGBRegressor", XGBRegressor))
-    estimators.append(("LightGBMRegressor", LightGBMRegressor))
+    estimators.append(("LightGBMRegressor", LGBMRegressor))
     # TODO implement a pygamregressor?
 
     for name, class_ in estimators :
