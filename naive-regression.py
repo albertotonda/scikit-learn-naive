@@ -148,10 +148,10 @@ def main() :
 
     # metrics considered
     metrics = dict()
+    metrics["r2"] = r2_score
     metrics["explained_variance"] = explained_variance_score
     metrics["MAE"] = mean_absolute_error
     metrics["MSE"] = mean_squared_error
-    metrics["r2"] = r2_score
     metrics["MA%E"] = mean_absolute_percentage_error
 
     # parsing command-line arguments

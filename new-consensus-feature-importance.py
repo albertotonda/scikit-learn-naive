@@ -74,7 +74,7 @@ def main() :
 
 def parse_command_line() :
 	
-    parser = argparse.ArgumentParser(description="Python script that evolves candidate land uses for Small Agricultural Regions.\nBy Francesco Accatino and Alberto Tonda, 2017-2019 <alberto.tonda@gmail.com>")
+    parser = argparse.ArgumentParser(description="Script to aggregate feature importance in a single ranking, starting from the results of multiple classification or regression algorithms.\nBy Alberto Tonda, 2019-2022 <alberto.tonda@gmail.com>")
     
     # required argument
     parser.add_argument("-d", "--directory", help="Directory containing all CSV files with relative feature importance.", required=True)	
