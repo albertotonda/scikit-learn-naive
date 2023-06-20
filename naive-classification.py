@@ -25,7 +25,7 @@ from inspect import signature, Parameter
 # local libraries
 import common
 from polynomialmodels import PolynomialLogisticRegression 
-from keraswrappers import ANNClassifier
+#from keraswrappers import ANNClassifier
 
 # here are some utility functions, for cross-validation, scaling, evaluation, et similia
 from sklearn.model_selection import StratifiedKFold
@@ -251,6 +251,13 @@ def main() :
             # if the classifier requires a random seed, set it
             if 'random_seed' in params :
                 params_dict['random_seed'] = random_seed
+                
+            # some classifier use a way of weighting classes that might fail if
+            # the target is not binary; we need to check that; however, at this
+            # point we still don't know the number of classes...all this section
+            # should probably be moved AFTER the dataset is loaded
+            if 'average' in params :
+                params['average'] = 'weighted' # also does not work
 
             # if the classifier has an "n_job" parameter (number of processors to use in parallel, add it
             if 'n_jobs' in params :
@@ -331,7 +338,8 @@ def main() :
         #X, y, variablesX, variablesY = common.loadCoronaData()
         #X, y, variablesX, variablesY = common.loadXORData()
         #X, y, variablesX, variablesY = common.loadMl4Microbiome()
-        X, y, variablesX, variablesY = common.loadMl4MicrobiomeCRC()
+        #X, y, variablesX, variablesY = common.loadMl4MicrobiomeCRC()
+        X, y, variablesX, variablesY = common.loadBeerDataset()
         variableY = variablesY[0]
 
     logging.info("Shape of X: " + str(X.shape))
