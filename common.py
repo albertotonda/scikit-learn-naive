@@ -29,6 +29,21 @@ def initialize_logging(folderName=None) :
 
     return
 
+def loadBeerDataset() :
+    """Dataset with 128 different types of beer"""
+    
+    file_data = "local_files/F0805.xlsx"
+    df = read_excel(file_data, sheet_name="Data")
+    print(df)
+    
+    class_column = "Style"
+    variablesX = [ c for c in df.columns if c != class_column ]
+    
+    X = df[variablesX].values
+    y = df[class_column].values
+    
+    return X, y, variablesX, [class_column]
+
 def loadMl4MicrobiomeCRC() :
     """Dataset CRC from the ml4microbiome WG3"""
 
@@ -762,3 +777,10 @@ def classByClassTest(classifier, testData, testLabels) :
 		report +="\n"
 
 	return report
+
+if __name__ == "__main__" :
+    """
+    This 'main' function is just here for trials
+    """
+    
+    loadBeerDataset()
