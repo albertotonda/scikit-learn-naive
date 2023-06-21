@@ -252,13 +252,6 @@ def main() :
             if 'random_seed' in params :
                 params_dict['random_seed'] = random_seed
                 
-            # some classifier use a way of weighting classes that might fail if
-            # the target is not binary; we need to check that; however, at this
-            # point we still don't know the number of classes...all this section
-            # should probably be moved AFTER the dataset is loaded
-            if 'average' in params :
-                params['average'] = 'weighted' # also does not work
-
             # if the classifier has an "n_job" parameter (number of processors to use in parallel, add it
             if 'n_jobs' in params :
                 params_dict['n_jobs'] = max(multiprocessing.cpu_count() - 1, 1) # use maximum available minus one; if it is zero, just use one
@@ -480,9 +473,37 @@ def main() :
 					
                     # store all results for selected metrics, in training and test
                     for metric_name, metric_function in metrics.items() :
-                        performances[classifierName][dataPreprocessing]["train"][metric_name].append( metric_function(y_train, y_train_pred) )
-                        performances[classifierName][dataPreprocessing]["test"][metric_name].append( metric_function(y_test, y_test_pred) )
+                        
+                        # some of the metrics might require extra arguments, for
+                        # example if the problem is multilabel; let's set them here
+                        # first, get all the parameters in the function
+                        sig = signature(metric_function)
+                        params = sig.parameters # these are not regular parameters, yet
 
+                        # we need to convert them to a dictionary
+                        params_dict = {}
+                        for p_name, param in params.items() :
+                            if params[p_name].default != Parameter.empty :
+                                params_dict[p_name] = params[p_name].default
+                        
+                        # if there are more than two classes, we need to change
+                        # the type of average
+                        if len(classes) > 2 :
+                            if "average" in params_dict :
+                                params_dict["average"] = "weighted"
+                        
+                        # classical parameters
+                        params_dict["y_true"] = y_train
+                        params_dict["y_pred"] = y_train_pred
+                        #performances[classifierName][dataPreprocessing]["train"][metric_name].append( metric_function(y_train, y_train_pred) )
+                        performances[classifierName][dataPreprocessing]["train"][metric_name].append( metric_function(**params_dict) )
+                        
+                        params_dict["y_true"] = y_test
+                        params_dict["y_pred"] = y_test_pred
+                        #performances[classifierName][dataPreprocessing]["test"][metric_name].append( metric_function(y_test, y_test_pred) )
+                        performances[classifierName][dataPreprocessing]["test"][metric_name].append( metric_function(**params_dict) )
+
+                        
                         logging.info("- %s: Training score: %.4f ; Test score: %.4f" % 
                                 (metric_name, performances[classifierName][dataPreprocessing]["train"][metric_name][-1],
                                     performances[classifierName][dataPreprocessing]["test"][metric_name][-1]))
