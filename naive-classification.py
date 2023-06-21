@@ -592,6 +592,8 @@ def main() :
                     ax_roc.legend(loc="lower right")
 
                     fig_roc.savefig(os.path.join(folder_name, classifierName + "-" + dataPreprocessing + "-roc-curve.png"), dpi=300)
+                    
+                    logging.info("- Mean AUC of classifier %s on %s data: %.4f (+/- %.4f)" % (classifierName, dataPreprocessing, mean_auc, std_auc))
 
                 else :
                     logging.warning("Cannot plot ROC curve for %s, something went wrong while computing TPRs and AUCs..." % classifierName)
@@ -601,9 +603,6 @@ def main() :
 
                 for metric_name in test_performance_dict :
                     logging.info("- Mean %s (test) of classifier %s on %s data: %.4f (+/- %.4f)" % (metric_name, classifierName, dataPreprocessing, np.mean(test_performance_dict[metric_name]), np.std(test_performance_dict[metric_name])))
-
-                # there is a metric that is computed separately, AUC
-                logging.info("- Mean AUC of classifier %s on %s data: %.4f (+/- %.4f)" % (classifierName, dataPreprocessing, mean_auc, std_auc))
 
                 # also, store he information about the AUC
                 performances[classifierName][dataPreprocessing]["AUC (mean)"] = mean_auc
