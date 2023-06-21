@@ -594,7 +594,12 @@ def main() :
                     fig_roc.savefig(os.path.join(folder_name, classifierName + "-" + dataPreprocessing + "-roc-curve.png"), dpi=300)
                     
                     logging.info("- Mean AUC of classifier %s on %s data: %.4f (+/- %.4f)" % (classifierName, dataPreprocessing, mean_auc, std_auc))
-
+                    
+                    # also, store the information about the AUC in the data structure
+                    # that collects all performance metrics
+                    performances[classifierName][dataPreprocessing]["AUC (mean)"] = mean_auc
+                    performances[classifierName][dataPreprocessing]["AUC (std)"] = std_auc
+                    
                 else :
                     logging.warning("Cannot plot ROC curve for %s, something went wrong while computing TPRs and AUCs..." % classifierName)
 
@@ -604,10 +609,6 @@ def main() :
                 for metric_name in test_performance_dict :
                     logging.info("- Mean %s (test) of classifier %s on %s data: %.4f (+/- %.4f)" % (metric_name, classifierName, dataPreprocessing, np.mean(test_performance_dict[metric_name]), np.std(test_performance_dict[metric_name])))
 
-                # also, store he information about the AUC
-                performances[classifierName][dataPreprocessing]["AUC (mean)"] = mean_auc
-                performances[classifierName][dataPreprocessing]["AUC (std)"] = std_auc
-                            
                 # plot a last confusion matrix including information for all the splits
                 confusionMatrixFileName = classifierName + "-confusion-matrix-" + dataPreprocessing + ".png"
                 confusionMatrix = confusion_matrix(all_y_test, all_y_pred)
