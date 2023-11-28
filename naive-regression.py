@@ -186,7 +186,6 @@ def main() :
     # automatically create the list of regressors
     regressor_dict = dict()
     estimators = all_estimators(type_filter="regressor")
-    estimators = [] # TODO remove this
 
     # NOTE/TODO add scikit-learn-compatible classifiers from other sources
     estimators.append(("XGBRegressor", XGBRegressor))
@@ -448,7 +447,6 @@ def main() :
 
             # also, plot a "global" graph
             # issue here, if a regressor fails, you have incongruent matrixes: a check is in order
-            # TODO also, the plot looks really bad if some values are negative; turn everything to absolute values?
             if len(foldPointsInOrder) == len( regressorScores["predicted"] ) :
                 
                 print(foldPointsInOrder)
