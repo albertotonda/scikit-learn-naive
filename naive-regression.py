@@ -10,6 +10,7 @@ import numpy as np
 import os
 import pandas as pd
 import pickle
+import seaborn as sns
 import sys
 
 # this is to get the parameters in a function
@@ -17,9 +18,9 @@ from inspect import signature, Parameter
 
 # my home-made stuff
 import common
-from keraswrappers import ANNRegressor
+#from keraswrappers import ANNRegressor
 from polynomialmodels import PolynomialRegressor
-from humanmodels import HumanRegressor
+#from humanmodels import HumanRegressor
 
 # scikit-learn stuff
 from sklearn.metrics import explained_variance_score, mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, r2_score
@@ -28,11 +29,12 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.utils import all_estimators
 
 # now, this is new and exciting stuff: Generalized Additive Models (GAM) from module pyGAM
-from pygam import LinearGAM 
+#from pygam import LinearGAM 
 
 # but not only, here comes the state of the art for ensemble models, XGBoost and LightGBM
-from xgboost import XGBRegressor
+from catboost import CatBoostRegressor
 from lightgbm import LGBMRegressor
+from xgboost import XGBRegressor
 
 # this is a class that can be used to wrap Eureqa equations
 # the annoying part is to find the corresponding named variables inside
@@ -162,6 +164,9 @@ def main() :
     parser.add_argument("--target", help="Name of the target column. It's only used if '--csv' is specified and no 'target' column is found in the data-set.")
     parser.add_argument("--folds", help="Name of the CSV dataset column that will be used to specify the folds. If not specified, data will be randomly split")
     args = parser.parse_args()
+    
+    # set graphic options
+    sns.set_style('darkgrid')
 
     # let's create a folder with a unique name to store results
     folderName = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M") + "-regression" 
@@ -181,10 +186,12 @@ def main() :
     # automatically create the list of regressors
     regressor_dict = dict()
     estimators = all_estimators(type_filter="regressor")
+    estimators = [] # TODO remove this
 
     # NOTE/TODO add scikit-learn-compatible classifiers from other sources
     estimators.append(("XGBRegressor", XGBRegressor))
     estimators.append(("LightGBMRegressor", LGBMRegressor))
+    estimators.append(("CatBoostRegressor", CatBoostRegressor))
     # TODO implement a pygamregressor?
 
     for name, class_ in estimators :
@@ -443,6 +450,10 @@ def main() :
             # issue here, if a regressor fails, you have incongruent matrixes: a check is in order
             # TODO also, the plot looks really bad if some values are negative; turn everything to absolute values?
             if len(foldPointsInOrder) == len( regressorScores["predicted"] ) :
+                
+                print(foldPointsInOrder)
+                print(regressorScores["predicted"])
+                
                 fig = plt.figure()
                 ax = fig.add_subplot(111)
                 
@@ -450,25 +461,33 @@ def main() :
                 #top_right_corner = [min(regressorScore["predicted"]), max(regressorScore["predicted"])]
                 x_bottom_top = [0, max(foldPointsInOrder)]
                 y_bottom_top = [0, max(foldPointsInOrder)]
+                
+                x_bottom_top = [min(foldPointsInOrder)[0], max(foldPointsInOrder)[0]]
+                y_bottom_top = [min(regressorScores["predicted"])[0], max(regressorScores["predicted"])[0]]
+                
+                x_figure = [x[0] for x in foldPointsInOrder]
+                y_figure = [x[0] for x in regressorScores["predicted"]]
 
-                ax.plot(foldPointsInOrder, regressorScores["predicted"], 'g.') # points
-                ax.plot(x_bottom_top, y_bottom_top, 'k--', label="1:1") # line
-                ax.plot(x_bottom_top, [y_bottom_top[0]*1.20, y_bottom_top[1]*1.20], 'r--', label="20% error")
-                ax.plot(x_bottom_top, [y_bottom_top[0]*0.80, y_bottom_top[1]*0.80], 'r--')
+                sns.lineplot(x=x_bottom_top, y=y_bottom_top, color='k', linestyle='--', label="1:1") # line
+                sns.lineplot(x=x_bottom_top, y=[y_bottom_top[0]*1.20, y_bottom_top[1]*1.20], color='r', linestyle='--', label="20% error")
+                sns.lineplot(x=x_bottom_top, y=[y_bottom_top[0]*0.80, y_bottom_top[1]*0.80], color='r', linestyle='--')
+                sns.scatterplot(x=x_figure, y=y_figure, color='g', marker='o', alpha=0.7) # points
                 
                 ax.set_title(regressorName + " measured vs predicted, " + variableY + " (all test)")
                 ax.set_xlabel("measured")
                 ax.set_ylabel("predicted")
                 ax.legend(loc='best')
     
-                plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-global-b.png") )
+                plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-global-b.png"), dpi=300 )
                 plt.close(fig)
 
         # here, we finished the loop; create a dataframe from the dictionary, then sort it by the key variable
         df = pd.DataFrame.from_dict(df_dict)
         df.sort_values(reference_metric + " (mean)", inplace=True, ascending=False)
         df.to_csv(os.path.join(folderName, "00_final_result_" + variableY + ".csv"), index=False)
-
+        
+        # TODO: finally, close the logs
+        
         return
 
 # stuff to make the script more proper
