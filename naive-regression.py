@@ -454,7 +454,6 @@ def main() :
 
             # also, plot a "global" graph
             # issue here, if a regressor fails, you have incongruent matrixes: a check is in order
-            # TODO also, the plot looks really bad if some values are negative; turn everything to absolute values?
             if len(foldPointsInOrder) == len( regressorScores["predicted"] ) :
                 
                 fig = plt.figure()
