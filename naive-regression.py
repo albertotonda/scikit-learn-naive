@@ -186,7 +186,6 @@ def main() :
     # automatically create the list of regressors
     regressor_dict = dict()
     estimators = all_estimators(type_filter="regressor")
-    estimators = [] # TODO remove this
 
     # NOTE/TODO add scikit-learn-compatible classifiers from other sources
     estimators.append(("XGBRegressor", XGBRegressor))
@@ -294,6 +293,7 @@ def main() :
     if variablesX is None : variablesX = [ "X" + str(i) for i in range(0, len(X[0])) ]
 
     performances = dict()
+    all_folds_indexes = None
 
     for variableIndex, variableY in enumerate(variablesY) :
 
@@ -305,7 +305,7 @@ def main() :
         # assume here that you will have train/test indexes instead
         # it's also easier for the plots, as we do not face the issue
         # of duplicate values (e.g. same value with two indexes)
-        rs = ShuffleSplit(n_splits=numberOfSplits, random_state=42)
+        rs = ShuffleSplit(n_splits=numberOfSplits, random_state=random_seed)
         #rs = LeaveOneOut()
 
         # initialize performance dictionary of arrays
@@ -318,9 +318,12 @@ def main() :
             
         # this is used to store all values of each fold, in order; maybe there's a smarter way to do it
         foldPointsInOrder = []
+        # this is used to store the index of the fold in which a point appears in the test set
+        fold_point_test_indexes = np.zeros((y_.shape[0],))
             
         # and now, for every regressor
-        for foldIndex, indexes in enumerate(rs.split(X)) :
+        all_folds_indexes = enumerate(rs.split(X))
+        for foldIndex, indexes in all_folds_indexes :
 
             train_index, test_index = indexes
 
@@ -343,6 +346,9 @@ def main() :
             
             # now, we store points of the folder in order of how they appear
             foldPointsInOrder.extend( list(scalerY.inverse_transform(y_test)) )
+            
+            # also keep track of indexes of folds when points appear in test
+            fold_point_test_indexes[test_index] = foldIndex
             
             for regressorIndex, regressorData in enumerate(regressor_dict.items()) :
 
@@ -451,9 +457,6 @@ def main() :
             # TODO also, the plot looks really bad if some values are negative; turn everything to absolute values?
             if len(foldPointsInOrder) == len( regressorScores["predicted"] ) :
                 
-                print(foldPointsInOrder)
-                print(regressorScores["predicted"])
-                
                 fig = plt.figure()
                 ax = fig.add_subplot(111)
                 
@@ -480,6 +483,15 @@ def main() :
     
                 plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-global-b.png"), dpi=300 )
                 plt.close(fig)
+                
+                # another thing we can do, which is clearly useful, is to save all predictions vs values
+                # extremely important if we need to recompute R2 or other metrics after the run
+                dict_all_predictions = {"test_fold" : fold_point_test_indexes,
+                                        "y_true" : [x[0] for x in foldPointsInOrder], 
+                                        "y_pred" : [x[0] for x in regressorScores["predicted"]]}
+                            
+                df_all_predictions = pd.DataFrame.from_dict(dict_all_predictions)
+                df_all_predictions.to_csv(os.path.join(folderName, regressorName + "-" + variableY + "-all-test-predictions.csv"), index=False)
 
         # here, we finished the loop; create a dataframe from the dictionary, then sort it by the key variable
         df = pd.DataFrame.from_dict(df_dict)
