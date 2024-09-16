@@ -239,7 +239,8 @@ def main() :
     regressor_dict["PolynomialRegressor_3"] = PolynomialRegressor(3)
 
     ### THIS PART IS JUST USED FOR DEBUGGING, JUST BRUTALLY SELECTING REGRESSORS TO HAVE FASTER TESTS
-    #regressor_dict = { regressor_name : regressor for regressor_name, regressor in regressor_dict.items() if regressor_name.startswith("RandomForest") }
+    #regressor_dict = { regressor_name : regressor for regressor_name, regressor in regressor_dict.items() 
+    #                  if regressor_name.startswith("RandomForest")}
     ### END OF THE DEBUGGING PART
 
     logging.info("A total of %d regressors will be used: %s" % (len(regressor_dict), str(regressor_dict)))
@@ -284,7 +285,10 @@ def main() :
     else :
         # this is just a dumb benchmark
         logging.info("No other dataset was specified on the command line, so a standard (easy) benchmark will be used instead...")
-        X, y, variablesX, variablesY = common.loadEasyBenchmark()
+        #X, y, variablesX, variablesY = common.loadEasyBenchmark()
+        #X, y, variablesX, variablesY = common.load_regression_data_hybrid_models()
+        #X, y, variablesX, variablesY = common.load_regression_data_Deniz()
+        X, y, variablesX, variablesY = common.load_regression_data_Guillaume()
     
     logging.info("Regressing %d output variables, in function of %d input variables..." % (y.shape[1], X.shape[1]))
     
@@ -488,9 +492,13 @@ def main() :
                 dict_all_predictions = {"test_fold" : fold_point_test_indexes,
                                         "y_true" : [x[0] for x in foldPointsInOrder], 
                                         "y_pred" : [x[0] for x in regressorScores["predicted"]]}
-                            
-                df_all_predictions = pd.DataFrame.from_dict(dict_all_predictions)
-                df_all_predictions.to_csv(os.path.join(folderName, regressorName + "-" + variableY + "-all-test-predictions.csv"), index=False)
+                
+                # TODO this part does not work, there is something wrong with the
+                # length of the arrays; it's probably worth it rewe
+                for key in dict_all_predictions :
+                    print("Length of array for \"%s\": %d" % (key, len(dict_all_predictions[key])))
+                #df_all_predictions = pd.DataFrame.from_dict(dict_all_predictions)
+                #df_all_predictions.to_csv(os.path.join(folderName, regressorName + "-" + variableY + "-all-test-predictions.csv"), index=False)
 
         # here, we finished the loop; create a dataframe from the dictionary, then sort it by the key variable
         df = pd.DataFrame.from_dict(df_dict)

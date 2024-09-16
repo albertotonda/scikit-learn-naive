@@ -16,7 +16,7 @@ class PolynomialRegressor :
     model = None
     poly = None
     
-    def __init__(self, max_degree) :
+    def __init__(self, max_degree=2) :
         self.max_degree = max_degree
         self.model = LinearRegression()
         self.poly = PolynomialFeatures(self.max_degree)

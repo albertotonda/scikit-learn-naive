@@ -3,11 +3,11 @@
 import logging
 import numpy as np
 import os
+import sys
 
 from logging.handlers import RotatingFileHandler
 from pandas import read_csv 	# excellent package to manipulate CSV files
 from pandas import read_excel 	# the same, but for Excel
-
 
 
 def initialize_logging(folderName=None) :
@@ -28,6 +28,76 @@ def initialize_logging(folderName=None) :
     logger.addHandler(ch)
 
     return
+
+def load_regression_data_Guillaume(configuration=2) :
+    """
+    Data from Guillaume Delaplace and his Ukrainian colleague.
+    """
+    file_data = "local_files/Agitation_mécanique_3 albertoV2.xlsx"
+    df = read_excel(file_data, sheet_name="data-clean")
+    
+    df.columns = [c if c != "HF/HL exp" else "HFHLexp" for c in df.columns ]
+    print(df.columns)
+
+    columns_not_to_be_used = ["N° exp", "type"]
+    
+    variable_y = "HFHLexp"
+    variables_X = []
+    
+    # depending on the type of experiment, some of the features may or may not
+    # be used in X
+    if configuration == 0 :
+        variables_X = ["Rea", "Ca", "Ntm", "CBsurHL"]
+    elif configuration == 1 :
+        variables_X = ["Rea", "Ca*", "Ntm", "CBsurHL"]
+    elif configuration == 2 :
+        variables_X = ["Rea", "Caost*", "Ntm", "CBsurHL", "n'"]
+    else :
+        variables_X = [c for c in df.columns if c != variable_y and c not in columns_not_to_be_used]
+    
+    X = df[variables_X].values
+    y = df[variable_y].values.reshape(-1, 1)
+    
+    return X, y, variables_X, [variable_y]
+    
+
+def load_regression_data_Deniz() :
+    """
+    Data obtained from the work of Deniz and Guillaume Delaplace.
+    """
+    file_data = "local_files/Deniz WPI prediction .XLSX"
+    df = read_excel(file_data, header=[0])
+    print(df)
+    
+    # now, the columns here are tuples (...), let's change them to strings;
+    # and then, sanitize the result, to avoid weird characters
+    df.columns = [slugify(c) for c in df.columns]
+    
+    # the target column is the only one that contains 'target' in the name
+    variable_y = [c for c in df.columns if c.find("3") != -1][0]    
+    variables_X = [c for c in df.columns if c != variable_y]
+    
+    X = df[variables_X].values
+    y = df[variable_y].values.reshape(-1,1)
+    
+    return X, y, variables_X, [variable_y]
+
+def load_regression_data_hybrid_models() :
+    """Data set with data used for hybrid models"""
+    file_data = "local_files/DatArticle_SVM4.xls"
+    df = read_excel(file_data)
+    print(df)
+    
+    # remove all columns that end with '.1' (duplicates)
+    columns = [c for c in df.columns if not c.endswith(".1")]
+    
+    variable_y = "qp"
+    variables_X = [c for c in columns if c != variable_y]
+    
+    X = df[variables_X].values
+    y = df[variable_y].values.reshape(-1,1)
+    
+    return X, y, variables_X, [variable_y]
 
 def loadBeerDataset() :
     """Dataset with 128 different types of beer"""
@@ -778,9 +848,32 @@ def classByClassTest(classifier, testData, testLabels) :
 
 	return report
 
+import unicodedata
+import re
+
+def slugify(value, allow_unicode=False):
+    """
+    Taken from https://github.com/django/django/blob/master/django/utils/text.py
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
+    dashes to single dashes. Remove characters that aren't alphanumerics,
+    underscores, or hyphens. Convert to lowercase. Also strip leading and
+    trailing whitespace, dashes, and underscores.
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value.lower())
+    return re.sub(r'[-\s]+', '-', value).strip('-_')
+
 if __name__ == "__main__" :
     """
     This 'main' function is just here for trials
     """
     
-    loadBeerDataset()
+    X, y, variables_X, variables_y = load_regression_data_Guillaume()
+    print(X)
+    print(y)
+    print(variables_X)
+    print(variables_y)
