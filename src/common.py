@@ -33,7 +33,7 @@ def load_regression_data_Guillaume(configuration=3) :
     """
     Data from Guillaume Delaplace and his Ukrainian colleague.
     """
-    file_data = "local_files/Agitation_mécanique_3 albertoV2.xlsx"
+    file_data = "../local_files/Agitation_mécanique_3 albertoV2.xlsx"
     df = read_excel(file_data, sheet_name="data-clean")
     
     df.columns = [c if c != "HF/HL exp" else "HFHLexp" for c in df.columns ]

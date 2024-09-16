@@ -9,3 +9,5 @@
 /guillaume-delaplace
 /local_files
 /results
+/src/__pycache__
+/src/catboost_info
