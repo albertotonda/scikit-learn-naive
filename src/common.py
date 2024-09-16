@@ -11,7 +11,7 @@ from pandas import read_excel 	# the same, but for Excel
 
 
 def initialize_logging(folderName=None) :
-    logger = logging.getLogger('')
+    logger = logging.getLogger("personalized_naive_logger")
     logger.setLevel(logging.DEBUG)
     formatter = logging.Formatter('[%(levelname)s %(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S') 
 
@@ -27,7 +27,7 @@ def initialize_logging(folderName=None) :
     ch.setFormatter(formatter)
     logger.addHandler(ch)
 
-    return
+    return logger
 
 def load_regression_data_Guillaume(configuration=3) :
     """

@@ -2,7 +2,6 @@
 # by Alberto Tonda, 2016-2022 <alberto.tonda@gmail.com>
 
 import argparse
-import copy
 import datetime
 import logging
 import multiprocessing # this is used just to assess number of available processors
@@ -36,29 +35,8 @@ from catboost import CatBoostRegressor
 from lightgbm import LGBMRegressor
 from xgboost import XGBRegressor
 
-# this is a class that can be used to wrap Eureqa equations
-# the annoying part is to find the corresponding named variables inside
-# array 'X'
-class EureqaRegressor :
-    
-    def fit(X, y) :
-
-        # basically do nothing, the fitting has been performed offline
-        return
-    
-    def predict(X) :
-
-        # here, we return an np array with the points predicted by the
-        # equation that we selected
-        y = np.zeros( len(X) )
-
-        for i in range(len(X)) :
-            y[i] = 1.234 * X[i][0]
-        
-        return y
-
 # TODO move relativeFeatureImportance to a common library (?)
-def relativeFeatureImportance(classifier) :
+def relativeFeatureImportance(classifier, logger) :
     
     # this is the output; it will be a sorted list of tuples (importance, index)
     # the index is going to be used to find the "true name" of the feature
@@ -103,7 +81,7 @@ def relativeFeatureImportance(classifier) :
         # more often appear close to the top; but it could be mono-dimensional,
         # so we need two special cases
         dimensions = len(classifier.coef_.shape)
-        #logging.info("dimensions=", len(dimensions))
+        #logger.info("dimensions=", len(dimensions))
         featureFrequency = None # to be initialized later
         
         # check on the dimensions
@@ -136,7 +114,7 @@ def relativeFeatureImportance(classifier) :
         orderedFeatures = sorted(orderedFeatures, key=lambda x : x[0], reverse=True)
 
     else :
-        logging.info("The classifier does not have any way to return a list with the relative importance of the features")
+        logger.info("The classifier does not have any way to return a list with the relative importance of the features")
 
     return np.array(orderedFeatures)
 
@@ -146,7 +124,8 @@ def main() :
     # hard-coded values
     numberOfSplits = 10 # TODO change number of splits from command line
     reference_metric = "r2" # metric that is used by default to sort the regressors
-    target_column = 'target'
+    result_folder_name = "../results"
+    target_column = "target"    
 
     # metrics considered
     metrics = dict()
@@ -169,16 +148,18 @@ def main() :
     sns.set_style('darkgrid')
 
     # let's create a folder with a unique name to store results
-    folderName = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M") + "-regression" 
-    if not os.path.exists(folderName) : os.makedirs(folderName)
+    folderName = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M") + "-regression"
+    folderName = os.path.join(result_folder_name, folderName)
+    if not os.path.exists(folderName) : 
+        os.makedirs(folderName)
     
     # initialize logging
-    common.initialize_logging(folderName)
+    logger = common.initialize_logging(folderName)
 
     # generate a random seed that will be used for all the experiments (or just use the one given from command line)
     random_seed = int(datetime.datetime.now().timestamp())
     if args.random_seed is not None : random_seed = args.random_seed
-    logging.info("Random seed that will be used for all experiments: %d" % random_seed)
+    logger.info("Random seed that will be used for all experiments: %d" % random_seed)
 
     # set the numpy random number generator with the seed
     np.random.seed(random_seed)
@@ -232,7 +213,7 @@ def main() :
                 regressor_dict[regressor_name + "_median"] = class_(**params_dict)
 
         except Exception as e :
-            logging.error("Cannot instantiate regressor \"%s\" (exception: \"%s\"), skipping..." % (name, str(e))) 
+            logger.error("Cannot instantiate regressor \"%s\" (exception: \"%s\"), skipping..." % (name, str(e))) 
 
     # add other regressors, taken from local libraries
     regressor_dict["PolynomialRegressor_2"] = PolynomialRegressor(2)
@@ -243,7 +224,7 @@ def main() :
     #                  if regressor_name.startswith("RandomForest")}
     ### END OF THE DEBUGGING PART
 
-    logging.info("A total of %d regressors will be used: %s" % (len(regressor_dict), str(regressor_dict)))
+    logger.info("A total of %d regressors will be used: %s" % (len(regressor_dict), str(regressor_dict)))
 
     # setting up variables
     X = y = X_train = X_test = y_train = y_test = variablesX = variablesY = None
@@ -256,14 +237,14 @@ def main() :
             if args.target is not None :
                 target_column = args.target
             else :
-                logging.error("Cannot find column \"%s\" in CSV file \"%s\". You'll need to specify a different target column from command line. Aborting..." % (target_column, args.csv))
+                logger.error("Cannot find column \"%s\" in CSV file \"%s\". You'll need to specify a different target column from command line. Aborting..." % (target_column, args.csv))
                 sys.exit(0)
 
         # before converting the dataframe to just numpy arrays, let's try to identify the categorical variables
         # and replace them with numerical values, to avoid issues with regressors that cannot deal with them
         categorical_columns = df.select_dtypes(include=['object']).columns.tolist() 
         if len(categorical_columns) > 0 :
-            logging.info("Found column(s) with categorical variables \"%s\", converting them to integers..." % str(categorical_columns))
+            logger.info("Found column(s) with categorical variables \"%s\", converting them to integers..." % str(categorical_columns))
 
         # replace each categorical column with values (in a naive way, just ascending numbers in the order they were found)
         for cc in categorical_columns :
@@ -284,13 +265,13 @@ def main() :
     
     else :
         # this is just a dumb benchmark
-        logging.info("No other dataset was specified on the command line, so a standard (easy) benchmark will be used instead...")
+        logger.info("No other dataset was specified on the command line, so a standard (easy) benchmark will be used instead...")
         #X, y, variablesX, variablesY = common.loadEasyBenchmark()
         #X, y, variablesX, variablesY = common.load_regression_data_hybrid_models()
         #X, y, variablesX, variablesY = common.load_regression_data_Deniz()
         X, y, variablesX, variablesY = common.load_regression_data_Guillaume()
     
-    logging.info("Regressing %d output variables, in function of %d input variables..." % (y.shape[1], X.shape[1]))
+    logger.info("Regressing %d output variables, in function of %d input variables..." % (y.shape[1], X.shape[1]))
     
     # if the names of the variables are not specified, let's specify them!
     if variablesY is None : variablesY = [ "y" + str(i) for i in range(0, len(y[0])) ]
@@ -301,7 +282,7 @@ def main() :
 
     for variableIndex, variableY in enumerate(variablesY) :
 
-        logging.info("** Now evaluating models for variable \"%s\"... **" % variableY)
+        logger.info("** Now evaluating models for variable \"%s\"... **" % variableY)
 
         # obtain data
         y_ = y[:,variableIndex].ravel()
@@ -337,7 +318,7 @@ def main() :
             y_test = y_[test_index]
             
             # normalize
-            logging.info("Normalizing data...")
+            logger.info("Normalizing data...")
             scalerX = StandardScaler()
             scalerY = StandardScaler()
 
@@ -358,7 +339,7 @@ def main() :
 
                 regressorName, regressor = regressorData
             
-                logging.info( "Fold #%d/%d: training regressor #%d/%d \"%s\"" % (foldIndex+1, numberOfSplits, regressorIndex+1, len(regressor_dict), regressorName) )
+                logger.info( "Fold #%d/%d: training regressor #%d/%d \"%s\"" % (foldIndex+1, numberOfSplits, regressorIndex+1, len(regressor_dict), regressorName) )
 
                 try :
                     regressor.fit(X_train, y_train.ravel())
@@ -370,7 +351,7 @@ def main() :
                     # for each metric, call the corresponding function and compute the result
                     for metric_name, metric_function in metrics.items() :
                         performances[variableY][regressorName][metric_name].append( metric_function(y_test, y_test_predicted) )
-                        logging.info("- %s score (test): %.4f" % (metric_name, performances[variableY][regressorName][metric_name][-1]))
+                        logger.info("- %s score (test): %.4f" % (metric_name, performances[variableY][regressorName][metric_name][-1]))
 
                     # also record the predictions, to be used later in a global figure
                     performances[variableY][regressorName]["predicted"].extend( list(scalerY.inverse_transform(y_test_predicted.reshape(-1,1))) )
@@ -394,7 +375,7 @@ def main() :
                     plt.title(regressorName + ", R^2=%.4f (test)" % performances[variableY][regressorName]["r2"][-1])
                     plt.legend()
                     
-                    logging.info("Saving figure...")
+                    logger.info("Saving figure...")
                     plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + ".png"), dpi=300 )
                     plt.close()
                     
@@ -414,7 +395,7 @@ def main() :
                     plt.close()
                     
                     # also, save ordered list of features
-                    featuresByImportance = relativeFeatureImportance(regressor)
+                    featuresByImportance = relativeFeatureImportance(regressor, logger)
 
                     # if list exists, write feature importance to disk
                     # TODO horrible hack here, to avoid issues with GAM
@@ -426,13 +407,13 @@ def main() :
                                 fp.write( variablesX[int(featureIndex)] + "," + str(featureImportance) + "\n")
             
                 except Exception as e :
-                    logging.error("Regressor \"" + regressorName + "\" failed on variable \"" + variableY + "\":", e)
+                    logger.error("Regressor \"" + regressorName + "\" failed on variable \"" + variableY + "\":", e)
 
-    logging.info("Final summary:")
+    logger.info("Final summary:")
             
     for variableY in variablesY :
 
-        logging.info("For variable \"" + variableY + "\"")
+        logger.info("For variable \"" + variableY + "\"")
 
         # we will start creating a dictionary that will be later converted to a Pandas DataFrame and sorted
         # we are going to create a different CSV file for each regression variable
@@ -445,13 +426,13 @@ def main() :
         # go over the metrics and print out some statistics
         for regressorName, regressorScores in performances[variableY].items() :
 
-            logging.info("For regressor \"%s\":" % regressorName)
+            logger.info("For regressor \"%s\":" % regressorName)
             df_dict["regressor"].append(regressorName)
 
             for metric_name, metric_function in metrics.items() : 
                 metric_mean = np.mean(regressorScores[metric_name])
                 metric_std = np.std(regressorScores[metric_name])
-                logging.info("\t- %s, mean=%.4f (std=%.4f)" % (metric_name, metric_mean, metric_std))
+                logger.info("\t- %s, mean=%.4f (std=%.4f)" % (metric_name, metric_mean, metric_std))
 
                 df_dict[metric_name + " (mean)"].append(metric_mean)
                 df_dict[metric_name + " (std)"].append(metric_std)
@@ -495,8 +476,8 @@ def main() :
                 
                 # TODO this part does not work, there is something wrong with the
                 # length of the arrays; it's probably worth it rewe
-                for key in dict_all_predictions :
-                    print("Length of array for \"%s\": %d" % (key, len(dict_all_predictions[key])))
+                #for key in dict_all_predictions :
+                #    print("Length of array for \"%s\": %d" % (key, len(dict_all_predictions[key])))
                 #df_all_predictions = pd.DataFrame.from_dict(dict_all_predictions)
                 #df_all_predictions.to_csv(os.path.join(folderName, regressorName + "-" + variableY + "-all-test-predictions.csv"), index=False)
 
@@ -505,7 +486,14 @@ def main() :
         df.sort_values(reference_metric + " (mean)", inplace=True, ascending=False)
         df.to_csv(os.path.join(folderName, "00_final_result_" + variableY + ".csv"), index=False)
         
-        # TODO: finally, close the logs
+        # finally, properly close the logs (hopefully)
+        logger.info("Run finished. Closing logs...")
+        for handler in logger.handlers:
+            handler.flush()
+            logger.removeHandler(handler)
+            handler.close()
+        
+        logging.shutdown()
         
         return
 

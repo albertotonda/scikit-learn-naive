@@ -11,3 +11,4 @@
 /results
 /src/__pycache__
 /src/catboost_info
+src/old-naive-regression.py

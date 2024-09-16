@@ -8,6 +8,7 @@ This is essentially a basic script to run a 10-fold cross-validation over all cl
 3. Subfolders with all the details for each algorithm, instead of a single very confusing folder.
 4. Sanitize the names of the input variables, to avoid a mess with file naming?
 5. Keep track of `y = f(X)`, with all the names of the variables, either in the log, or in a separate file.
+6. Set `n_jobs=-1` for all algorithms, so that they use all available cores.
 
 ### naive-regression
 1. Keep track of the performance of each algorithm on each fold.
