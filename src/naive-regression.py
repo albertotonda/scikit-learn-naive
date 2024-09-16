@@ -148,13 +148,13 @@ def main() :
     sns.set_style('darkgrid')
 
     # let's create a folder with a unique name to store results
-    folderName = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M") + "-regression"
-    folderName = os.path.join(result_folder_name, folderName)
-    if not os.path.exists(folderName) : 
-        os.makedirs(folderName)
+    folder_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M") + "-regression"
+    folder_name = os.path.join(result_folder_name, folder_name)
+    if not os.path.exists(folder_name) : 
+        os.makedirs(folder_name)
     
     # initialize logging
-    logger = common.initialize_logging(folderName)
+    logger = common.initialize_logging(folder_name)
 
     # generate a random seed that will be used for all the experiments (or just use the one given from command line)
     random_seed = int(datetime.datetime.now().timestamp())
@@ -173,6 +173,7 @@ def main() :
     estimators.append(("LightGBMRegressor", LGBMRegressor))
     estimators.append(("CatBoostRegressor", CatBoostRegressor))
     # TODO implement a pygamregressor?
+    # TODO add PySR, and treat PySR's output separately and/or save pickles for everything
 
     for name, class_ in estimators :
         # try to infer if classifiers accept special parameters (e.g. 'random_seed') and add them as keyword arguments
@@ -376,7 +377,7 @@ def main() :
                     plt.legend()
                     
                     logger.info("Saving figure...")
-                    plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + ".png"), dpi=300 )
+                    plt.savefig( os.path.join(folder_name, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + ".png"), dpi=300 )
                     plt.close()
                     
                     # plotting second figure, with everything close to a middle line
@@ -391,7 +392,7 @@ def main() :
                     plt.title(regressorName + " measured vs predicted, " + variableY)
                     plt.legend(loc='best')
 
-                    plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + "-b.png"), dpi=300 )
+                    plt.savefig( os.path.join(folder_name, regressorName + "-" + variableY + "-fold-" + str(foldIndex+1) + "-b.png"), dpi=300 )
                     plt.close()
                     
                     # also, save ordered list of features
@@ -401,7 +402,7 @@ def main() :
                     # TODO horrible hack here, to avoid issues with GAM
                     if len(featuresByImportance) > 0 and "GAM" not in regressorName :
                         featureImportanceFileName = regressorName + "-" + variableY + "-featureImportance-fold" + str(foldIndex) + ".csv"
-                        with open( os.path.join(folderName, featureImportanceFileName), "w") as fp :
+                        with open( os.path.join(folder_name, featureImportanceFileName), "w") as fp :
                             fp.write("feature,importance\n")
                             for featureImportance, featureIndex in featuresByImportance :
                                 fp.write( variablesX[int(featureIndex)] + "," + str(featureImportance) + "\n")
@@ -465,7 +466,7 @@ def main() :
                 ax.set_ylabel("predicted")
                 ax.legend(loc='best')
     
-                plt.savefig( os.path.join(folderName, regressorName + "-" + variableY + "-global-b.png"), dpi=300 )
+                plt.savefig( os.path.join(folder_name, regressorName + "-" + variableY + "-global-b.png"), dpi=300 )
                 plt.close(fig)
                 
                 # another thing we can do, which is clearly useful, is to save all predictions vs values
@@ -479,12 +480,12 @@ def main() :
                 #for key in dict_all_predictions :
                 #    print("Length of array for \"%s\": %d" % (key, len(dict_all_predictions[key])))
                 #df_all_predictions = pd.DataFrame.from_dict(dict_all_predictions)
-                #df_all_predictions.to_csv(os.path.join(folderName, regressorName + "-" + variableY + "-all-test-predictions.csv"), index=False)
+                #df_all_predictions.to_csv(os.path.join(folder_name, regressorName + "-" + variableY + "-all-test-predictions.csv"), index=False)
 
         # here, we finished the loop; create a dataframe from the dictionary, then sort it by the key variable
         df = pd.DataFrame.from_dict(df_dict)
         df.sort_values(reference_metric + " (mean)", inplace=True, ascending=False)
-        df.to_csv(os.path.join(folderName, "00_final_result_" + variableY + ".csv"), index=False)
+        df.to_csv(os.path.join(folder_name, "00_final_result_" + variableY + ".csv"), index=False)
         
         # finally, properly close the logs (hopefully)
         logger.info("Run finished. Closing logs...")

@@ -12,3 +12,5 @@
 /src/__pycache__
 /src/catboost_info
 src/old-naive-regression.py
+src/x_test.py
+src/app.log
