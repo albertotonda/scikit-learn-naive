@@ -6,6 +6,8 @@ This is essentially a basic script to run a 10-fold cross-validation over all cl
 1. it would be nice to have a refactoring, with subdirectories `/src` and `/data`, plus a `/results` that is not part of the version control.
 2. Global plot with comparison of the 10 most performing algorithms, as a histogram or boxplot.
 3. Subfolders with all the details for each algorithm, instead of a single very confusing folder.
+4. Sanitize the names of the input variables, to avoid a mess with file naming?
+5. Keep track of `y = f(X)`, with all the names of the variables. 
 
 ### naive-regression
 1. Keep track of the performance of each algorithm on each fold.

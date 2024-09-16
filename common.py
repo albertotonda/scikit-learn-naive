@@ -29,7 +29,7 @@ def initialize_logging(folderName=None) :
 
     return
 
-def load_regression_data_Guillaume(configuration=2) :
+def load_regression_data_Guillaume(configuration=3) :
     """
     Data from Guillaume Delaplace and his Ukrainian colleague.
     """
@@ -52,6 +52,8 @@ def load_regression_data_Guillaume(configuration=2) :
         variables_X = ["Rea", "Ca*", "Ntm", "CBsurHL"]
     elif configuration == 2 :
         variables_X = ["Rea", "Caost*", "Ntm", "CBsurHL", "n'"]
+    elif configuration == 3 :
+        variables_X = ["Rea", "Ca*rosen", "CBsurHL", "n", "gamma", "Ntm", "N.t*"]
     else :
         variables_X = [c for c in df.columns if c != variable_y and c not in columns_not_to_be_used]
     
