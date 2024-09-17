@@ -4,7 +4,6 @@
 import argparse
 import datetime
 import json
-import logging
 import multiprocessing # this is used just to assess number of available processors
 import numpy as np
 import os
@@ -420,7 +419,14 @@ def main() :
                             fp.write("feature,importance\n")
                             for featureImportance, featureIndex in featuresByImportance :
                                 fp.write( variablesX[int(featureIndex)] + "," + str(featureImportance) + "\n")
-            
+                    
+                    # finally, save a pickle of the trained regressor to file;
+                    # this can be later used to extract a lot of information
+                    pickle_file_name = os.path.join(regressor_folder_name, 
+                                           regressorName + "-" + variableY + "-trained-fold-%d.pk" % foldIndex)
+                    with open(pickle_file_name, "wb") as fp :
+                        pickle.dump(regressor, fp)
+                    
                 except Exception as e :
                     logger.error("Regressor \"" + regressorName + "\" failed on variable \"" + variableY + "\":", e)
                     for metric_name in metrics :
@@ -463,7 +469,6 @@ def main() :
                     logger.info("\t- regressor failed on some folds, cannot compute mean %s performance..."
                                 % metric_name)
         
-
                 df_dict[metric_name + " (mean)"].append(metric_mean)
                 df_dict[metric_name + " (std)"].append(metric_std)
 
