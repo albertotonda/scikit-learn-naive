@@ -20,7 +20,7 @@ def initialize_logging(folder_name=None) :
     
     file_handler = None
     if folder_name is not None :
-        file_handler = RotatingFileHandler( os.path.join(folder_name, "00_log.log"), mode='a', maxBytes=100*1024*1024, backupCount=2, encoding=None, delay=0 )
+        file_handler = RotatingFileHandler( os.path.join(folder_name, "log.txt"), mode='a', maxBytes=100*1024*1024, backupCount=2, encoding=None, delay=0 )
         file_handler.setLevel(logging.DEBUG)
     
     console_handler = logging.StreamHandler()
@@ -34,21 +34,22 @@ def initialize_logging(folder_name=None) :
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
     
-    # formatter = logging.Formatter('[%(levelname)s %(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S') 
-
-    # # the 'RotatingFileHandler' object implements a log file that is automatically limited in size
-    # if folderName != None :
-    #     fh = RotatingFileHandler( os.path.join(folderName, "00_log.log"), mode='a', maxBytes=100*1024*1024, backupCount=2, encoding=None, delay=0 )
-    #     fh.setLevel(logging.DEBUG)
-    #     fh.setFormatter(formatter)
-    #     logger.addHandler(fh)
-
-    # ch = logging.StreamHandler()
-    # ch.setLevel(logging.INFO)
-    # ch.setFormatter(formatter)
-    # logger.addHandler(ch)
-
     return logger
+
+def close_logging(logger) :
+    """
+    Function that properly closes all handlers attached to a log and shuts down
+    logging nicely (hopefully).
+    """
+    for handler in logger.handlers:
+        handler.flush()
+        logger.removeHandler(handler)
+        handler.close()
+    
+    logging.shutdown()
+    
+    return
+    
 
 def load_regression_data_Guillaume(configuration=3) :
     """
