@@ -460,7 +460,8 @@ def main() :
                 
                     logger.info("\t- %s, mean=%.4f (std=%.4f)" % (metric_name, metric_mean, metric_std))
                 else :
-                    logger.info("\t- %s failed on some folds, cannot compute mean performance...")
+                    logger.info("\t- regressor failed on some folds, cannot compute mean %s performance..."
+                                % metric_name)
         
 
                 df_dict[metric_name + " (mean)"].append(metric_mean)
