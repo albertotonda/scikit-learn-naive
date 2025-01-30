@@ -111,7 +111,7 @@ def main() :
     all_rankings = dict()
     for f in file_names :
 
-            df = pandas.read_csv( os.path.join(args.directory, f), sep=',')
+            df = pd.read_csv( os.path.join(args.directory, f), sep=',')
             all_rankings[f] = df.values
 
 

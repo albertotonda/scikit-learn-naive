@@ -30,7 +30,7 @@ from polynomialmodels import PolynomialLogisticRegression
 # here are some utility functions, for cross-validation, scaling, evaluation, et similia
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, auc, confusion_matrix, f1_score, matthews_corrcoef, roc_auc_score, roc_curve, RocCurveDisplay 
+from sklearn.metrics import accuracy_score, auc, balanced_accuracy_score, confusion_matrix, f1_score, matthews_corrcoef, roc_auc_score, roc_curve, RocCurveDisplay 
 from sklearn.utils import all_estimators # this one returns all estimators
 
 # other libraries that contain scikit-learn-compatible tools, allegedly at the state of the art
@@ -187,6 +187,7 @@ def main() :
 	
     # hard-coded values here
     n_splits = 10
+    result_folder_name = "../results"
     final_report_file_name = "00_final_report.csv"
     reference_metric = "F1"
 
@@ -196,6 +197,7 @@ def main() :
     metrics["Accuracy"] = accuracy_score
     metrics["F1"] = f1_score
     metrics["MCC"] = matthews_corrcoef
+    metrics["Balanced Accuracy"] = balanced_accuracy_score
 
     # TODO maybe divide into "fast", "exhaustive", "heuristic"
     parser = argparse.ArgumentParser()
@@ -207,10 +209,12 @@ def main() :
 
     # create uniquely named folder
     folder_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M") + "-classification" 
-    if not os.path.exists(folder_name) : os.makedirs(folder_name)
+    folder_name = os.path.join(result_folder_name, folder_name)
+    if not os.path.exists(folder_name) :
+        os.makedirs(folder_name)
     
     # start logging
-    common.initialize_logging(folder_name)
+    logger = common.initialize_logging(folder_name)
 
     # generate a random seed that will be used for all the experiments
     random_seed = None
@@ -218,7 +222,7 @@ def main() :
         random_seed = int(datetime.datetime.now().timestamp())
     else :
         random_seed = args.random_seed
-    logging.info("Random seed that will be used for all experiments: %d" % random_seed)
+    logger.info("Random seed that will be used for all experiments: %d" % random_seed)
 
     # set the numpy random number generator with the seed
     np.random.seed(random_seed)
@@ -276,7 +280,7 @@ def main() :
                     classifier_list.append( class_(**params_dict) )
 
         except Exception as e :
-            logging.error("Cannot instantiate classifier \"%s\" (exception: \"%s\"), skipping..." % (name, str(e))) 
+            logger.error("Cannot instantiate classifier \"%s\" (exception: \"%s\"), skipping..." % (name, str(e))) 
 
     # TODO BRUTALLY REMOVE ALL CLASSIFIERS EXCEPT THE ONES WE NEED TO TEST, JUST TO SPEED UP TESTING (this part has to be changed)
     #classifier_list = [ c for c in classifier_list if str(c).startswith("RandomForest") ]
@@ -295,14 +299,14 @@ def main() :
         classifier_list = new_classifier_list
     ### END OF THE PART USED FOR TESTING
         
-    logging.info("A total of %d classifiers will be used: %s" % (len(classifier_list), str(classifier_list)))
+    logger.info("A total of %d classifiers will be used: %s" % (len(classifier_list), str(classifier_list)))
     
     # this part can be used by some case studies, storing variable names
     df = X = y = variableY = variablesX = None
 
     # let's see if the dataset name has been specified on the command line
     if args.csv is not None :
-        logging.info("CSV file specified on command line, \"%s\". Loading data..." % args.csv) 
+        logger.info("CSV file specified on command line, \"%s\". Loading data..." % args.csv) 
         df = pd.read_csv(args.csv)
         df.reset_index(drop=True, inplace=True) # avoid weird indices, this restarts them from 0
 
@@ -310,7 +314,7 @@ def main() :
         if args.target is not None : target_variable_name = args.target
 
         if target_variable_name not in df.columns :
-            logging.error("Column \"%s\" not found in CSV dataset \"%s\". Aborting...")
+            logger.error("Column \"%s\" not found in CSV dataset \"%s\". Aborting...")
             sys.exit(0)
 
         # specify variables which are not part of the features; the target is not part of the features,
@@ -326,40 +330,29 @@ def main() :
         
     else :
         # get data
-        logging.info("Loading data...")
+        logger.info("Loading data...")
         #X, y, variablesX, variablesY = common.loadRallouData() # TODO replace here to load different data
         #X, y, variablesX, variablesY = common.loadCoronaData()
         #X, y, variablesX, variablesY = common.loadXORData()
         #X, y, variablesX, variablesY = common.loadMl4Microbiome()
         #X, y, variablesX, variablesY = common.loadMl4MicrobiomeCRC()
-        X, y, variablesX, variablesY = common.loadBeerDataset()
+        #X, y, variablesX, variablesY = common.loadBeerDataset()
+        X, y, variablesX, variablesY = common.load_classification_data_Guillaume()
         variableY = variablesY[0]
 
-    logging.info("Shape of X: " + str(X.shape))
-    logging.info("Shape of y: " + str(y.shape))
+    logger.info("Shape of X: " + str(X.shape))
+    logger.info("Shape of y: " + str(y.shape))
     
     # also take note of the classes, they will be useful in the following
     classes, classesCount = np.unique(y, return_counts=True)
 	
     # let's output some details about the data, that might be important
-    logging.info("Class distribution for the %d classes." % len(classes))
+    logger.info("Class distribution for the %d classes." % len(classes))
     for i, c in enumerate(classes) :
-        logging.info("- Class \"%s\" has %.4f of the samples in the dataset." % (str(c), float(classesCount[i]) / float(y.shape[0])))
+        logger.info("- Class \"%s\" has %.4f (%d/%d) of the samples in the dataset." % 
+                    (str(c), float(classesCount[i]) / float(y.shape[0]),
+                     classesCount[i], y.shape[0]))
 	
-    # an interesting comparison: what's the performance of a random classifier?
-    # TODO this could be replaced by DummyClassifier
-    if False :
-        random_scores = { metric_name : [] for metric_name, metric_function in metrics.items() }
-        for i in range(0, 100) :
-            y_random = [ classes[k] for k in np.random.randint(0, high=len(classes), size=y.shape[0]) ]
-            y_random = [ random.choice(classes) for k in range(0, y.shape[0]) ]
-            y_random = np.reshape(y_random, y.shape)
-            for metric_name, metric_function in metrics.items() :
-                random_scores[metric_name].append( metric_function(y, y_random) )
-        logging.info("As a comparison, randomly picking labels 100 times returns the following scores:")
-        for metric_name, metric_scores in random_scores.items() :
-            logging.info("- Mean %s: %.4f (+/- %.4f)" % (metric_name, np.mean(metric_scores), np.std(metric_scores)))
-
     # check: do the variables' names exist? if not, put some placeholders
     if variableY is None : variableY = "Y"
     if variablesX is None : variablesX = [ "X" + str(i) for i in range(0, X.shape[1]) ]
@@ -374,19 +367,19 @@ def main() :
         # if the column that defines the folds is specified, let's look at it and build folds accordingly
         folds_column = args.folds
         if folds_column not in df.columns :
-            logging.error("Column describing folds \"%s\" not found in CSV dataset \"%s\". Aborting..." % (folds_column, args.csv))
+            logger.error("Column describing folds \"%s\" not found in CSV dataset \"%s\". Aborting..." % (folds_column, args.csv))
             sys.exit(0)
 
         # let's look at the unique values inside the column
         folds_names = df[folds_column].unique()
-        logging.info("Found a total of %d folds" % len(folds_names))
+        logger.info("Found a total of %d folds" % len(folds_names))
 
         # get indexes for each fold
         folds = []
         for f_i, f_name in enumerate(folds_names) :
             train_index = df.index[df[folds_column] != f_name].tolist()
             test_index = df.index[df[folds_column] == f_name].tolist()
-            logging.info("- Fold %d (\"%s\") has %d/%d rows" % (f_i, f_name, len(test_index), df.shape[0]))
+            logger.info("- Fold %d (\"%s\") has %d/%d rows" % (f_i, f_name, len(test_index), df.shape[0]))
 
             folds.append([train_index, test_index])
 
@@ -424,7 +417,7 @@ def main() :
             else :
                 classifierName += "_rbf" # the default value
 
-        logging.info("Classifier #%d/%d: %s..." % (classifierIndex+1, len(classifier_list), classifierName))
+        logger.info("Classifier #%d/%d: %s..." % (classifierIndex+1, len(classifier_list), classifierName))
         
         # initialize local performance
         performances[classifierName] = dict()
@@ -433,7 +426,11 @@ def main() :
         dataPreprocessingOptions = ["raw", "normalized"]
 		
         for dataPreprocessing in dataPreprocessingOptions :
-
+            
+            # let's try to create a tidier result folder, creating sub-folders
+            classifier_subfolder_name = os.path.join(folder_name, classifierName + "-" + dataPreprocessing)
+            os.makedirs(classifier_subfolder_name)
+            
             # prepare all the necessary stuff for the ROC/AUC figure (unfortunately we have to do it here)
             # because we need a different ROC for each classifier/data pre-processing combination
             tprs = []
@@ -450,10 +447,13 @@ def main() :
             # this is used to produce a "global" confusion matrix for the classifier
             all_y_test = []
             all_y_pred = []
+            # and these will be used for the files containing predictions
+            all_test_indexes = []
+            all_fold_indexes = []
 
             # iterate over all splits
             splitIndex = 0
-            for train_index, test_index in folds :
+            for fold_index, (train_index, test_index) in enumerate(folds) :
 
                 X_train, X_test = X[train_index], X[test_index] 
                 y_train, y_test = y[train_index], y[test_index] 
@@ -463,7 +463,7 @@ def main() :
                     X_train = scaler.fit_transform(X_train)
                     X_test = scaler.transform(X_test)
 			
-                logging.info("Training classifier %s on fold #%d/%d (%s data)..." % (classifierName, splitIndex+1, n_splits, dataPreprocessing))
+                logger.info("Training classifier %s on fold #%d/%d (%s data)..." % (classifierName, splitIndex+1, n_splits, dataPreprocessing))
                 try:
                     classifier.fit(X_train, y_train)
 					
@@ -504,20 +504,22 @@ def main() :
                         performances[classifierName][dataPreprocessing]["test"][metric_name].append( metric_function(**params_dict) )
 
                         
-                        logging.info("- %s: Training score: %.4f ; Test score: %.4f" % 
+                        logger.info("- %s: Training score: %.4f ; Test score: %.4f" % 
                                 (metric_name, performances[classifierName][dataPreprocessing]["train"][metric_name][-1],
                                     performances[classifierName][dataPreprocessing]["test"][metric_name][-1]))
 					
                     # store information on the predictions, that will be used later
                     all_y_test = np.append(all_y_test, y_test)
                     all_y_pred = np.append(all_y_pred, y_test_pred)
-					
+                    all_test_indexes = np.append(all_test_indexes, test_index)
+                    all_fold_indexes = np.append(all_fold_indexes, [fold_index] * len(test_index))
+                    
                     # get features, ordered by importance 
                     featuresByImportance = get_relative_feature_importance(classifier)
 					
                     # write feature importance to disk
                     featureImportanceFileName = classifierName + "-featureImportance-split-" + str(splitIndex) + "." + dataPreprocessing + ".csv"
-                    with open( os.path.join(folder_name, featureImportanceFileName), "w") as fp :
+                    with open( os.path.join(classifier_subfolder_name, featureImportanceFileName), "w") as fp :
                         fp.write("feature,importance\n")
                         for featureImportance, featureIndex in featuresByImportance :
                             fp.write( "\"" + variablesX[int(featureIndex)] + "\"," + str(featureImportance) + "\n")
@@ -525,23 +527,25 @@ def main() :
                     # also create and plot confusion matrix for test
                     confusionMatrixFileName = classifierName + "-confusion-matrix-split-" + str(splitIndex) + "-" + dataPreprocessing + ".png"
                     confusionMatrix = confusion_matrix(y_test, y_test_pred)
-                    plot_confusion_matrix(confusionMatrix, classes, os.path.join(folder_name, confusionMatrixFileName)) 
+                    plot_confusion_matrix(confusionMatrix, classes, os.path.join(classifier_subfolder_name, confusionMatrixFileName)) 
 
-                    # also store information for the ROC figure
-                    viz = RocCurveDisplay.from_estimator(
-                        classifier,
-                        X_test,
-                        y_test,
-                        name="ROC fold %d" % splitIndex,
-                        alpha=0.3,
-                        lw=1,
-                        ax=ax_roc,
-                    )
-
-                    interp_tpr = np.interp(mean_fpr, viz.fpr, viz.tpr)
-                    interp_tpr[0] = 0.0
-                    tprs.append(interp_tpr)
-                    aucs.append(viz.roc_auc)
+                    # also store information for the ROC figure; but maybe
+                    # it only works for two classes, double-check this
+                    if len(classes) == 2 :
+                        viz = RocCurveDisplay.from_estimator(
+                            classifier,
+                            X_test,
+                            y_test,
+                            name="ROC fold %d" % splitIndex,
+                            alpha=0.3,
+                            lw=1,
+                            ax=ax_roc,
+                        )
+    
+                        interp_tpr = np.interp(mean_fpr, viz.fpr, viz.tpr)
+                        interp_tpr[0] = 0.0
+                        tprs.append(interp_tpr)
+                        aucs.append(viz.roc_auc)
 
                 except Exception as e :
                     logging.warning("\tunexpected error: ", e)
@@ -556,7 +560,7 @@ def main() :
                 # another check: we need enough tprs and aucs to plot the ROC curve
                 if len(tprs) == n_splits and len(aucs) == n_splits :
                     # TODO check what happens when you have many different classes...
-                    logging.info("Plotting ROC figure...")
+                    logger.info("Plotting ROC figure...")
                     ax_roc.plot([0, 1], [0, 1], linestyle="--", lw=2, color="r", label="Chance", alpha=0.8)
 
                     mean_tpr = np.mean(tprs, axis=0)
@@ -591,9 +595,9 @@ def main() :
                     )
                     ax_roc.legend(loc="lower right")
 
-                    fig_roc.savefig(os.path.join(folder_name, classifierName + "-" + dataPreprocessing + "-roc-curve.png"), dpi=300)
+                    fig_roc.savefig(os.path.join(classifier_subfolder_name, classifierName + "-" + dataPreprocessing + "-roc-curve.png"), dpi=300)
                     
-                    logging.info("- Mean AUC of classifier %s on %s data: %.4f (+/- %.4f)" % (classifierName, dataPreprocessing, mean_auc, std_auc))
+                    logger.info("- Mean AUC of classifier %s on %s data: %.4f (+/- %.4f)" % (classifierName, dataPreprocessing, mean_auc, std_auc))
                     
                     # also, store the information about the AUC in the data structure
                     # that collects all performance metrics
@@ -607,18 +611,20 @@ def main() :
                 test_performance_dict = performances[classifierName][dataPreprocessing]["test"]
 
                 for metric_name in test_performance_dict :
-                    logging.info("- Mean %s (test) of classifier %s on %s data: %.4f (+/- %.4f)" % (metric_name, classifierName, dataPreprocessing, np.mean(test_performance_dict[metric_name]), np.std(test_performance_dict[metric_name])))
+                    logger.info("- Mean %s (test) of classifier %s on %s data: %.4f (+/- %.4f)" % (metric_name, classifierName, dataPreprocessing, np.mean(test_performance_dict[metric_name]), np.std(test_performance_dict[metric_name])))
 
                 # plot a last confusion matrix including information for all the splits
                 confusionMatrixFileName = classifierName + "-confusion-matrix-" + dataPreprocessing + ".png"
                 confusionMatrix = confusion_matrix(all_y_test, all_y_pred)
-                plot_confusion_matrix(confusionMatrix, classes, os.path.join(folder_name, confusionMatrixFileName)) 
+                plot_confusion_matrix(confusionMatrix, classes, os.path.join(classifier_subfolder_name, confusionMatrixFileName)) 
 
                 # but also save all test predictions, so that other metrics could be computed on top of them
                 df = pd.DataFrame()
+                df["sample_index"] = all_test_indexes
+                df["test_in_fold"] = all_fold_indexes
                 df["y_true"] = all_y_test
                 df["y_pred"] = all_y_pred
-                df.to_csv(os.path.join(folder_name, classifierName + "-test-predictions-" + dataPreprocessing + ".csv"), index=False)
+                df.to_csv(os.path.join(classifier_subfolder_name, classifierName + "-test-predictions-" + dataPreprocessing + ".csv"), index=False)
 
             # in any case (we had enough data or not), we close the figure, to save memory
             plt.close(fig_roc)
@@ -664,7 +670,7 @@ def main() :
     df.sort_values(reference_metric + " test (mean)", ascending=False, inplace=True)
 
     final_report_file_name = os.path.join(folder_name, final_report_file_name)
-    logging.info("Final results will be written to file \"" + final_report_file_name + "\"...")
+    logger.info("Final results will be written to file \"" + final_report_file_name + "\"...")
     df.to_csv(final_report_file_name, index=False)
 
     # TODO also close all logging, but this might require refactoring the logging code
@@ -677,41 +683,41 @@ def main() :
             for result in performances_list :
 
                 temp_string = "Classifier \"%s\", accuracy: mean=%.4f, stdev=%.4f" % (result[0], result[1], result[2])
-                logging.info(temp_string)
+                logger.info(temp_string)
                 fp.write(temp_string + "\n")
 
                 temp_string = "Folds: %s" % str(result[3])
-                logging.info(temp_string)
+                logger.info(temp_string)
                 fp.write(temp_string + "\n\n")
 
 
         #		# this part can be skipped because it's computationally expensive; also skip if there are only two classes
         #		if False :
         #			# multiclass classifiers are treated differently
-        #			logging.info("Now training OneVsOneClassifier with " + classifierName + "...")
+        #			logger.info("Now training OneVsOneClassifier with " + classifierName + "...")
         #			multiClassClassifier = OneVsOneClassifier( classifierData[0] ) 
         #			multiClassClassifier.fit(trainData, trainLabels)
         #			trainScore = multiClassClassifier.score(trainData, trainLabels)
         #			testScore = multiClassClassifier.score(testData, testLabels)
-        #			logging.info("\ttraining score: %.4f ; test score: %.4f", trainScore, testScore)
-        #			logging.info(common.classByClassTest(multiClassClassifier, testData, testLabels))
+        #			logger.info("\ttraining score: %.4f ; test score: %.4f", trainScore, testScore)
+        #			logger.info(common.classByClassTest(multiClassClassifier, testData, testLabels))
         #
-        #			logging.info("Now training OneVsRestClassifier with " + classifierName + "...")
+        #			logger.info("Now training OneVsRestClassifier with " + classifierName + "...")
         #			currentClassifier = copy.deepcopy( classifierData[0] )
         #			multiClassClassifier = OneVsRestClassifier( currentClassifier ) 
         #			multiClassClassifier.fit(trainData, trainLabels)
         #			trainScore = multiClassClassifier.score(trainData, trainLabels)
         #			testScore = multiClassClassifier.score(testData, testLabels)
-        #			logging.info("\ttraining score: %.4f ; test score: %.4f", trainScore, testScore)
-        #			logging.info(common.classByClassTest(multiClassClassifier, testData, testLabels))
+        #			logger.info("\ttraining score: %.4f ; test score: %.4f", trainScore, testScore)
+        #			logger.info(common.classByClassTest(multiClassClassifier, testData, testLabels))
         #
-        #			logging.info("Now training OutputCodeClassifier with " + classifierName + "...")
+        #			logger.info("Now training OutputCodeClassifier with " + classifierName + "...")
         #			multiClassClassifier = OutputCodeClassifier( classifierData[0] ) 
         #			multiClassClassifier.fit(trainData, trainLabels)
         #			trainScore = multiClassClassifier.score(trainData, trainLabels)
         #			testScore = multiClassClassifier.score(testData, testLabels)
-        #			logging.info("\ttraining score: %.4f ; test score: %.4f", trainScore, testScore)
-        #			logging.info(common.classByClassTest(multiClassClassifier, testData, testLabels))
+        #			logger.info("\ttraining score: %.4f ; test score: %.4f", trainScore, testScore)
+        #			logger.info(common.classByClassTest(multiClassClassifier, testData, testLabels))
             
             # TODO save files for each classifier:
             #	- recall?

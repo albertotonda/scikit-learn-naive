@@ -49,7 +49,65 @@ def close_logging(logger) :
     logging.shutdown()
     
     return
+
+def load_classification_data_Guillaume() :
+    """
+    Classification data set in an Excel spreadsheet
+    """
+    file_data = "../local_files/size_Atomization_IIGDV3sent27012025.xlsx"
     
+    df = read_excel(file_data, sheet_name="data  calcul ", skiprows=2)
+    #print(df)
+    #print(df.columns)
+    
+    target_column = "breakup mode"
+    variables_X = ["P2", "P3", "P4", "P5", "P6", "P7", "P8"]
+    
+    X = df[variables_X].values
+    y = df[target_column].values
+    
+    return X, y, variables_X, [target_column]
+
+def load_regression_data_Guillaume_3(configuration=1) :
+    """
+    Another regression data set for Guillaume Delaplace and his Ukrainian colleague.
+    """
+    file_data = "../local_files/Données_tension de surfaceGD28092024.xlsx"
+    df = read_excel(file_data, sheet_name="data-clean")
+    
+    variable_y = "HFsurHL"
+    variables_X = []
+    
+    if configuration == 0 :
+        variables_X = ["Rea", "Caost*", "Ntm", "CBsurHL", "n'"]
+    elif configuration == 1 :
+        variables_X = ["Rea", "Carosen*", "CBsurHL", "n", "gamma", "Ntm", "Nt*"]
+    
+    X = df[variables_X].values
+    y = df[variable_y].values.reshape(-1, 1)
+    
+    return X, y, variables_X, [variable_y]
+    
+
+def load_regression_data_Guillaume_2(configuration=1) :
+    """
+    Another regression data set for Guillaume Delaplace and his Ukrainian colleague.
+    """
+    file_data = "../local_files/Agitation_mécanique_3 albertoV3.xlsx"
+    df = read_excel(file_data, sheet_name="data-clean")
+    
+    variable_y = "HFsurHLexp"
+    variables_X = []
+    
+    if configuration == 0 :
+        variables_X = ["Rea", "Caost*", "Ntm", "CBsurHL", "n'"]
+    elif configuration == 1 :
+        variables_X = ["Rea", "Ca*rosen", "CBsurHL", "n", "gamma", "Ntm", "N.t*"]
+    
+    X = df[variables_X].values
+    y = df[variable_y].values.reshape(-1, 1)
+    
+    return X, y, variables_X, [variable_y]
 
 def load_regression_data_Guillaume(configuration=3) :
     """
@@ -896,7 +954,7 @@ if __name__ == "__main__" :
     This 'main' function is just here for trials
     """
     
-    X, y, variables_X, variables_y = load_regression_data_Guillaume()
+    X, y, variables_X, variables_y = load_regression_data_Guillaume_3()
     print(X)
     print(y)
     print(variables_X)

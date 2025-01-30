@@ -1,5 +1,5 @@
 # Simple Python script that iterates over several regression methods and tests them on a given dataset
-# by Alberto Tonda, 2016-2022 <alberto.tonda@gmail.com>
+# by Alberto Tonda, 2016-2024 <alberto.tonda@gmail.com>
 
 import argparse
 import datetime
@@ -173,7 +173,7 @@ def main() :
     regressor_dict = dict()
     estimators = all_estimators(type_filter="regressor")
 
-    # NOTE/TODO add scikit-learn-compatible classifiers from other sources
+    # NOTE/TODO add scikit-learn-compatible regressors from other sources
     estimators.append(("XGBRegressor", XGBRegressor))
     estimators.append(("LightGBMRegressor", LGBMRegressor))
     estimators.append(("CatBoostRegressor", CatBoostRegressor))
@@ -278,7 +278,10 @@ def main() :
         #X, y, variablesX, variablesY = common.loadEasyBenchmark()
         #X, y, variablesX, variablesY = common.load_regression_data_hybrid_models()
         #X, y, variablesX, variablesY = common.load_regression_data_Deniz()
-        X, y, variablesX, variablesY = common.load_regression_data_Guillaume()
+        #X, y, variablesX, variablesY = common.load_regression_data_Guillaume()
+        #X, y, variablesX, variablesY = common.load_regression_data_Guillaume_2()
+        X, y, variablesX, variablesY = common.load_regression_data_Guillaume_3()
+    
     
     logger.info("Regressing %d output variables, in function of %d input variables..." % (y.shape[1], X.shape[1]))
     
@@ -323,6 +326,8 @@ def main() :
         foldPointsInOrder = []
         # this is used to store the index of the fold in which a point appears in the test set
         fold_point_test_indexes = []
+        # and this is used just to keep track of the index of the samples in the test set
+        test_set_sample_indexes = []
             
         # and now, for every regressor
         all_folds_indexes = enumerate(rs.split(X))
@@ -341,6 +346,7 @@ def main() :
             # this will be used to keep track of the fold index for which a
             # specific point was part of the test set
             fold_point_test_indexes.extend([foldIndex] * len(test_index))
+            test_set_sample_indexes.extend(test_index)
             
             # normalize
             logger.info("Normalizing data...")
@@ -507,9 +513,12 @@ def main() :
                 
                 # another thing we can do, which is clearly useful, is to save all predictions vs values
                 # extremely important if we need to recompute R2 or other metrics after the run
-                dict_all_predictions = {"test_fold" : fold_point_test_indexes,
-                                        "y_true" : [x[0] for x in foldPointsInOrder], 
-                                        "y_pred" : [x[0] for x in regressorScores["predicted"]]}
+                dict_all_predictions = {
+                    "sample_index" : test_set_sample_indexes,
+                    "test_fold" : fold_point_test_indexes,
+                    "y_true" : [x[0] for x in foldPointsInOrder], 
+                    "y_pred" : [x[0] for x in regressorScores["predicted"]]
+                    }
                 
                 df_all_predictions = pd.DataFrame.from_dict(dict_all_predictions)
                 df_all_predictions.to_csv(os.path.join(regressor_folder_name, regressorName + "-" + variableY + "-all-test-predictions.csv"), index=False)
